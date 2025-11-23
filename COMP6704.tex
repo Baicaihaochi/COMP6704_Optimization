@@ -1,0 +1,213 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\begin{document}
+
+\section*{Mathematical Formulation of the Berlin52 Traveling Salesman Problem}
+
+Consider a set of 52 cities $\mathcal{V} = \{1, 2, \dots, 52\}$ embedded in the Euclidean plane, where each city $i$ has coordinates $(x_i, y_i)$. The symmetric distance between distinct cities $i$ and $j$ is defined as the rounded Euclidean distance:
+\[
+d_{ij} = d_{ji} = \left\lfloor \sqrt{(x_i - x_j)^2 + (y_i - y_j)^2} + \frac{1}{2} \right\rfloor, \quad \forall i,j \in \mathcal{V},  i \neq j,
+\]
+where $\lfloor \cdot \rfloor$ denotes the rounding operation to the nearest integer, consistent with TSPLIB specifications.
+
+Define binary decision variables for undirected edges:
+\[
+x_{ij} = 
+\begin{cases} 
+1 & \text{if edge } \{i,j\} \text{ is included in the tour}, \\
+0 & \text{otherwise},
+\end{cases}
+\quad \forall \{i,j\} \subseteq \mathcal{V},  i < j.
+\]
+
+\noindent\textbf{Optimization Objective}: Find a minimum-length Hamiltonian cycle:
+\[
+\begin{aligned}
+\min_{\mathbf{x}} \quad & \sum_{1 \leq i < j \leq 52} d_{ij} x_{ij} \\
+\text{s.t.} \quad & \sum_{\substack{j=1 \\ j \neq i}}^{52} x_{\min(i,j),\max(i,j)} = 2, & \forall i \in \mathcal{V} \quad \text{(degree constraints)} \\
+& \sum_{\substack{i \in S \\ j \in \mathcal{V} \setminus S \\ i < j}} x_{ij} + \sum_{\substack{i \in S \\ j \in \mathcal{V} \setminus S \\ i > j}} x_{ji} \geq 2, & \forall S \subset \mathcal{V},  3 \leq |S| \leq 49 \quad \text{(subtour elimination)} \\
+& x_{ij} \in \{0,1\}, & \forall 1 \leq i < j \leq 52.
+\end{aligned}
+\]
+The subtour elimination constraints ensure connectivity by requiring at least two edges between any proper subset $S$ and its complement. The known optimal tour length for the Berlin52 instance is $\text{OPT} = 7542$, verified by the Concorde solver. City coordinates adhere to TSPLIB format with identifiers 1 through 52.
+
+\section*{Method 1: Greedy Nearest Neighbor Heuristic with 2-opt Local Search}
+
+\subsection*{Mathematical Formulation}
+Let $\pi = \langle \pi_1, \pi_2, \dots, \pi_{52} \rangle$ denote a cyclic permutation of cities, where $\pi_k$ is the $k$-th city visited. Let $\mathcal{U} = \mathcal{V} \setminus \{\pi_1, \dots, \pi_k\}$ be the set of unvisited cities.
+
+\noindent\textbf{Nearest Neighbor Construction}: Starting from $\pi_1 = s$ (typically $s=1$), iteratively select the nearest unvisited city:
+\[
+\pi_{k+1} = \underset{j \in \mathcal{U}}{\arg\min}  d_{\pi_k j}.
+\]
+
+\noindent\textbf{2-opt Improvement}: For indices $1 \leq i < j \leq 52$ (with $\pi_{53} \equiv \pi_1$), define the edge swap between $(\pi_i, \pi_{i+1})$ and $(\pi_j, \pi_{j+1})$. The cost difference is:
+\[
+\Delta = \left( d_{\pi_i \pi_{i+1}} + d_{\pi_j \pi_{j+1}} \right) - \left( d_{\pi_i \pi_j} + d_{\pi_{i+1} \pi_{j+1}} \right).
+\]
+If $\Delta > 0$, reverse the subpath $\langle \pi_{i+1}, \dots, \pi_j \rangle$ to obtain:
+\[
+\pi' = \langle \pi_1, \dots, \pi_i, \pi_j, \pi_{j-1}, \dots, \pi_{i+1}, \pi_{j+1}, \dots, \pi_{52} \rangle.
+\]
+
+\subsection*{Algorithmic Procedure}
+\begin{enumerate}
+    \item \textbf{Initialization}: Set $\pi_1 = 1$, $\mathcal{U} = \mathcal{V} \setminus \{1\}$, $k=1$.
+    \item \textbf{Path Construction}: While $\mathcal{U} \neq \emptyset$:
+    \item $j^* \gets \underset{j \in \mathcal{U}}{\arg\min}  d_{\pi_k j}$
+        \item $\pi_{k+1} \gets j^*$, $\mathcal{U} \gets \mathcal{U} \setminus \{j^*\}$, $k \gets k+1$
+    \item \textbf{Cycle Closure}: Complete the cycle by connecting $\pi_{52}$ to $\pi_1$.
+    \item \textbf{2-opt Local Search}:
+    \item Set $\text{improved} \gets \text{true}$
+        \item While $\text{improved}$:
+        \begin{itemize}
+            \item $\text{improved} \gets \text{false}$
+            \item For all $1 \leq i < j \leq 52$:
+            \begin{itemize}
+                \item Compute $\Delta$ for edges $(\pi_i, \pi_{i+1})$ and $(\pi_j, \pi_{j+1})$
+                \item If $\Delta > 0$:
+                \begin{itemize}
+                    \item Update $\pi \gets \pi'$ via subpath reversal
+                    \item $\text{improved} \gets \text{true}$, break inner loop
+            \end{itemize}
+        \end{itemize}
+    \end{itemize}
+    \item \textbf{Output}: Final tour $\pi$ and total length $\sum_{k=1}^{51} d_{\pi_k \pi_{k+1}} + d_{\pi_{52} \pi_1}$.
+\end{enumerate}
+
+\section*{Method 2: Exact Integer Linear Programming with Lazy Subtour Elimination}
+
+\subsection*{Mathematical Formulation}
+The base model omits exponential subtour constraints, solved via branch-and-cut:
+\[
+\begin{aligned}
+\min_{\mathbf{x}} \quad & \sum_{1 \leq i < j \leq 52} d_{ij} x_{ij} \\
+\text{s.t.} \quad & \sum_{\substack{j=1 \\ j \neq i}}^{52} x_{\min(i,j),\max(i,j)} = 2, & \forall i \in \mathcal{V} \\
+& x_{ij} \in \{0,1\}, & \forall 1 \leq i < j \leq 52.
+\end{aligned}
+\]
+Lazy constraints are dynamically added during optimization. For a candidate solution $\mathbf{x}^*$, let $G^* = (\mathcal{V}, E^*)$ where $E^* = \{ \{i,j\} \mid x^*_{ij} = 1 \}$.
+
+\subsection*{Lazy Constraint Callback Mechanism}
+\begin{enumerate}
+    \item Solve the relaxed ILP (without subtour constraints).
+    \item Upon obtaining an integer-feasible solution $\mathbf{x}^*$:
+    \item Decompose $G^*$ into connected components $\mathcal{C}_1, \dots, \mathcal{C}_m$ via depth-first search.
+        \item For each component $\mathcal{C}_k$ with $2 \leq |\mathcal{C}_k| \leq 50$:
+        \[
+        \sum_{\substack{i \in \mathcal{C}_k \\ j \in \mathcal{V} \setminus \mathcal{C}_k \\ i < j}} x_{ij} + \sum_{\substack{i \in \mathcal{C}_k \\ j \in \mathcal{V} \setminus \mathcal{C}_k \\ i > j}} x_{ji} \geq 2
+        \]
+        \item If any constraint is added, prune the current node and reoptimize.
+    \item Terminate when optimality is proven or a time limit (e.g., 300 seconds) is reached.
+\end{enumerate}
+
+\subsection*{Algorithmic Implementation}
+\begin{enumerate}
+    \item Initialize ILP model with degree constraints only.
+    \item Register lazy constraint callback with solver (e.g., Gurobi/CPLEX).
+    \item Invoke solver with callback mechanism enabled.
+    \item In callback, when integer solution $\mathbf{x}^*$ is found:
+    \item Construct graph $G^*$ from $\mathbf{x}^*$.
+        \item Identify connected components via DFS.
+        \item Add violated subtour elimination constraints for non-trivial components.
+    \item Output optimal solution (or best feasible solution within time limit).
+\end{enumerate}
+
+\noindent\textbf{Complexity}: Worst-case time complexity is exponential $O(2^n)$, but lazy constraints significantly reduce practical runtime. For Berlin52, proving optimality may be intractable within reasonable time limits, though high-quality feasible solutions are typically obtained.
+
+\section*{Method 3: Genetic Algorithm with Permutation Encoding}
+
+\subsection*{Mathematical Formulation}
+\noindent\textbf{Chromosome Representation}: A tour is encoded as a permutation $\mathbf{p} = \langle p_1, p_2, \dots, p_{52} \rangle$ where $\{p_1, \dots, p_{52}\} = \mathcal{V}$.
+
+\noindent\textbf{Fitness Function}: Minimize tour length $L(\mathbf{p})$; fitness is inversely proportional:
+\[
+f(\mathbf{p}) = \frac{1}{L(\mathbf{p})}, \quad L(\mathbf{p}) = \sum_{k=1}^{51} d_{p_k p_{k+1}} + d_{p_{52} p_1}.
+\]
+
+\noindent\textbf{Selection}: Tournament selection with size $k=3$:
+\[
+\mathbf{p}_{\text{sel}} = \underset{\mathbf{p} \in \mathcal{T}}{\arg\max}  f(\mathbf{p}), \quad \mathcal{T} \subset \mathcal{P},  |\mathcal{T}| = 3.
+\]
+
+\noindent\textbf{Crossover (Ordered Crossover - OX)}:
+\item Select crossover points $a,b$ ($1 \leq a < b \leq 52$) uniformly at random.
+    \item Child 1 inherits segment $\langle p_a, \dots, p_b \rangle$ from Parent 1.
+    \item Remaining positions are filled sequentially from Parent 2, skipping cities already in the inherited segment.
+
+\noindent\textbf{Mutation (Inversion Mutation)}:
+\item Select indices $i,j$ ($1 \leq i < j \leq 52$) uniformly at random.
+    \item Reverse the subsequence $\langle p_i, p_{i+1}, \dots, p_j \rangle$.
+
+\subsection*{Algorithmic Procedure}
+\begin{enumerate}
+    \item \textbf{Initialization}: Generate population $\mathcal{P}$ of size $N=200$ with random permutations (or seeded with NN-heuristic tours).
+    \item \textbf{Fitness Evaluation}: Compute $f(\mathbf{p})$ for all $\mathbf{p} \in \mathcal{P}$.
+    \item \textbf{Generational Loop} (for $G=500$ generations):
+    \item \textbf{Selection}: Create mating pool via tournament selection ($k=3$).
+        \item \textbf{Variation}:
+        \begin{itemize}
+            \item Apply OX crossover with probability $p_c = 0.8$
+            \item Apply inversion mutation with probability $p_m = 0.1$
+        \item \textbf{Elitism}: Preserve best individual from $\mathcal{P}$ in next generation.
+        \item \textbf{Update}: Replace $\mathcal{P}$ with offspring population.
+        \item Track best solution encountered.
+    \end{itemize}
+    \item \textbf{Output}: Best tour found and its length.
+\end{enumerate}
+
+\noindent\textbf{Parameters}: Population size $N=200$, generations $G=500$, crossover rate $p_c=0.8$, mutation rate $p_m=0.1$, tournament size $k=3$.
+
+\section*{Method 4: Dynamic Programming (Held-Karp Algorithm)}
+
+\subsection*{Mathematical Formulation}
+Fix city 1 as the origin. Define state $C(S, j)$ as the minimum cost to start at city 1, visit all cities in $S \subseteq \mathcal{V} \setminus \{1\}$ exactly once, and end at city $j \in S$:
+\[
+C(S, j) = 
+\begin{cases} 
+d_{1j} & \text{if } S = \{j\}, \\
+\min\limits_{\substack{k \in S \\ k \neq j}} \left[ C(S \setminus \{j\}, k) + d_{kj} \right] & \text{if } |S| \geq 2.
+\end{cases}
+\]
+The optimal tour length is:
+\[
+\text{OPT} = \min_{j \in \mathcal{V} \setminus \{1\}} \left[ C(\mathcal{V} \setminus \{1\}, j) + d_{j1} \right].
+\]
+
+\subsection*{Algorithmic Procedure}
+\begin{enumerate}
+    \item \textbf{Initialization}:
+    \item $\forall j \in \{2,\dots,52\}$: $C(\{j\}, j) \gets d_{1j}$, $\text{prev}[\{j\}, j] \gets 1$
+    \item \textbf{State Transition} (by subset cardinality $m = 2$ to $51$):
+    \item For each $S \subseteq \mathcal{V} \setminus \{1\}$ with $|S| = m$:
+        \begin{itemize}
+            \item For each $j \in S$:
+            \begin{itemize}
+                \item $C(S,j) \gets \min\limits_{k \in S \setminus \{j\}} \left[ C(S \setminus \{j\}, k) + d_{kj} \right]$
+                \item $\text{prev}[S,j] \gets \underset{k}{\arg\min} \left[ C(S \setminus \{j\}, k) + d_{kj} \right]$
+        \end{itemize}
+    \end{itemize}
+    \item \textbf{Optimal Cost Calculation}:
+    \item $S_{\text{full}} \gets \mathcal{V} \setminus \{1\}$
+        \item $j^* \gets \underset{j \in S_{\text{full}}}{\arg\min} \left[ C(S_{\text{full}}, j) + d_{j1} \right]$
+        \item $\text{OPT} \gets C(S_{\text{full}}, j^*) + d_{j^*1}$
+    \item \textbf{Path Reconstruction}:
+    \item Initialize path $\gets \langle j^*, 1 \rangle$
+        \item $S \gets S_{\text{full}} \setminus \{j^*\}$, $j \gets j^*$
+        \item While $S \neq \emptyset$:
+        \begin{itemize}
+            \item $k \gets \text{prev}[S \cup \{j\}, j]$
+            \item Prepend $k$ to path
+            \item $S \gets S \setminus \{k\}$, $j \gets k$
+    \end{itemize}
+\end{enumerate}
+
+\noindent\textbf{Complexity Analysis}: Time complexity $O(n^2 2^n)$, space complexity $O(n 2^n)$. For $n=52$, the state space exceeds $52 \times 2^{51} \approx 1.13 \times 10^{17}$ states, rendering it computationally infeasible on modern hardware. This method serves as a theoretical benchmark and is practical only for $n \leq 25$. For Berlin52, it may be applied to small subsets (e.g., $n \leq 20$) to validate other methods.
+
+\end{document}
