@@ -21,9 +21,9 @@ We study the classic Euclidean Traveling Salesman Problem (TSP) on the Berlin52 
 \end{abstract}
 
 \section{Introduction}
-The Traveling Salesman Problem (TSP) seeks a minimum-length Hamiltonian cycle visiting each city exactly once. Despite its simple statement, TSP is NP-hard and a touchstone for both exact optimization and metaheuristics. The Berlin52 instance from TSPLIB provides 52 planar coordinates with the standard rounded Euclidean metric and a widely accepted optimal tour length of 7542 (e.g., verified by Concorde). Its moderate size enables meaningful comparisons between exact and heuristic methods within practical time limits.
+The Traveling Salesman Problem (TSP) seeks a minimum-length Hamiltonian cycle visiting each city exactly once. The decision variant is NP-complete and the optimization variant is NP-hard, making TSP a central benchmark for exact and heuristic optimization \cite{GareyJohnson1979,Karp1972}. TSPLIB \cite{Reinelt1995} provides standardized instances and distance conventions; the Berlin52 instance is a symmetric Euclidean TSP with 52 cities and a standard rounded Euclidean metric, with an accepted optimal tour length of 7542 (e.g., established by Concorde \cite{Applegate2006Concorde}). Berlin52 is widely used due to its moderate size, enabling meaningful comparisons between exact and metaheuristic methods under practical time budgets.
 
-This paper makes three contributions: (i) a precise problem formulation using TSPLIB rounding; (ii) four Berlin52-ready methods covering constructive heuristics, metaheuristics, and exact ILP in dual modes; and (iii) a clear, reproducible experimental design. A dynamic programming (Held--Karp) formulation appears in the appendix for completeness but is not executed at full size due to exponential state growth.
+This paper makes three contributions: (i) a precise problem formulation using TSPLIB rounding; (ii) four Berlin52-ready methods covering constructive heuristics (Nearest Neighbor with 2-opt), metaheuristics (Genetic Algorithm, Simulated Annealing), and exact ILP in dual modes (lazy SEC branch-and-cut and MTZ); and (iii) a clear, reproducible experimental design. A dynamic programming (Held--Karp) formulation \cite{HeldKarp1962,Bellman1962} appears in the appendix for completeness but is not executed at full size due to exponential state growth.
 
 \section{Problem Formulation}
 Let $\mathcal{V}=\{1, \dots, n\}$, $n=52$, denote cities with coordinates $(x_i,y_i)$. TSPLIB's rounded Euclidean distance is
@@ -56,11 +56,11 @@ This eliminates subtours without callbacks and is suitable for open-source solve
 All four methods in this section are executable on Berlin52. We provide rigorous definitions, algorithmic steps, complexity, and termination criteria.
 
 \subsection{Nearest Neighbor + 2-opt}
-Let a tour be a cyclic permutation $\pi=\langle \pi_1,\dots,\pi_n\rangle$. The Nearest Neighbor (NN) constructor initializes $\pi_1=s$ (e.g., $s=1$) and iteratively selects
+Let a tour be a cyclic permutation $\pi=\langle \pi_1,\dots,\pi_n\rangle$. The Nearest Neighbor (NN) constructor \cite{Flood1956,Rosenkrantz1977} initializes $\pi_1=s$ (e.g., $s=1$) and iteratively selects
 \begin{equation}
  \pi_{k+1}=\arg\min_{j\in \mathcal{V}\setminus\{\pi_1,\dots,\pi_k\}} d_{\pi_k j}.
 \end{equation}
-For 2-opt, for $1\le i<j\le n$ (with $\pi_{n+1}\equiv\pi_1$) consider swapping edges $(\pi_i,\pi_{i+1})$ and $(\pi_j,\pi_{j+1})$; accept if
+For 2-opt \cite{Croes1958}, for $1\le i<j\le n$ (with $\pi_{n+1}\equiv\pi_1$) consider swapping edges $(\pi_i,\pi_{i+1})$ and $(\pi_j,\pi_{j+1})$; accept if
 \begin{equation}
  \Delta=\big(d_{\pi_i\pi_{i+1}}+d_{\pi_j\pi_{j+1}}\big)-\big(d_{\pi_i\pi_j}+d_{\pi_{i+1}\pi_{j+1}}\big) > 0,
 \end{equation}
@@ -71,24 +71,24 @@ and reverse the subpath $\langle \pi_{i+1},\dots,\pi_j\rangle$.
 \textbf{Complexity.} NN construction is $O(n^2)$. A full 2-opt pass is $O(n^2)$; the number of improving passes is instance-dependent (typically small for $n=52$).
 
 \subsection{ILP (Lazy SEC + MTZ)}
-\textbf{Lazy-SEC mode.} Solve the symmetric degree-only model; when an integer solution $x^*$ is found, build $G^*=(\mathcal{V},E^*)$ with $E^*=\{\{i,j\}:x^*_{ij}=1\}$, detect connected components/subtours, and add the violated SECs. Iterate until optimality or time limit.
+\textbf{Lazy-SEC mode.} Based on the DFJ formulation \cite{DFJ1954}, solve the symmetric degree-only model; when an integer solution $x^*$ is found, build $G^*=(\mathcal{V},E^*)$ with $E^*=\{\{i,j\}:x^*_{ij}=1\}$, detect connected components/subtours, and add the violated SECs. Iterate until optimality or time limit in a branch-and-cut framework \cite{PadbergRinaldi1991,Applegate2006Concorde}.
 
-\textbf{MTZ fallback.} Solve the directed MTZ model with $y,u$ variables when lazy callbacks are unavailable.
+\textbf{MTZ fallback.} Solve the directed MTZ model \cite{MTZ1960} with $y,u$ variables when lazy callbacks are unavailable.
 
 \textbf{Termination.} Report optimality when the MIP gap is zero; otherwise stop at a preset time limit $\tau$ and report the best incumbent and MIP gap.
 
 \textbf{Complexity.} Exponential in the worst case; practically effective on Berlin52 with a modern MIP solver.
 
 \subsection{Genetic Algorithm}
-\textbf{Encoding.} A chromosome is a permutation $\mathbf{p}=\langle p_1,\dots,p_n\rangle$.
+\textbf{Encoding.} A chromosome is a permutation $\mathbf{p}=\langle p_1,\dots,p_n\rangle$ \cite{Goldberg1989}.
 
 \textbf{Fitness.} $f(\mathbf{p})=1/L(\mathbf{p})$ where $L(\mathbf{p})=\sum_{k=1}^{n-1} d_{p_k p_{k+1}}+d_{p_n p_1}$.
 
 \textbf{Selection.} Tournament of size $k$ selects $\arg\max f$.
 
-\textbf{Crossover (OX).} Choose cut points $a<b$; copy segment $p_a,\dots,p_b$ from parent 1; fill remaining positions by scanning parent 2 in order, skipping duplicates.
+\textbf{Crossover (OX).} Choose cut points $a<b$; copy segment $p_a,\dots,p_b$ from parent 1; fill remaining positions by scanning parent 2 in order, skipping duplicates \cite{Davis1985}.
 
-\textbf{Mutation (inversion or swap).} Pick indices $i<j$ and reverse $p_i,\dots,p_j$ (or swap two cities) with probability $p_m$.
+\textbf{Mutation (inversion or swap).} Pick indices $i<j$ and reverse $p_i,\dots,p_j$ (or swap two cities) with probability $p_m$ \cite{Michalewicz1996}.
 
 \textbf{Local improvement (optional).} Apply 2-opt to the best $q\%$ individuals every $r$ generations (memetic GA).
 
@@ -97,11 +97,11 @@ and reverse the subpath $\langle \pi_{i+1},\dots,\pi_j\rangle$.
 \textbf{Complexity.} $O\big(\text{pop}\times G\times (n + C_{2\text{-opt}})\big)$, where $C_{2\text{-opt}}$ is the amortized cost of local improvement when enabled.
 
 \subsection{Simulated Annealing}
-Let a move be a 2-opt reversal. Given current tour cost $L$ and candidate cost $L'$, accept with probability
+Let a move be a 2-opt reversal. Given current tour cost $L$ and candidate cost $L'$, accept with probability (Metropolis rule)
 \begin{equation}
  \mathbb{P}[\text{accept}]=\min\{1,\exp(-(L'-L)/T)\}.
 \end{equation}
-Use geometric cooling $T_{t+1}=\alpha T_t$ with $\alpha\in(0,1)$ and a fixed number of iterations per temperature level.
+Use geometric cooling $T_{t+1}=\alpha T_t$ with $\alpha\in(0,1)$ and a fixed number of iterations per temperature level; simulated annealing was introduced for combinatorial optimization in \cite{Kirkpatrick1983,Cerny1985}.
 
 \textbf{Initialization.} Start from NN or a random permutation; set $T_0$ from a percentile of sampled 2-opt cost increases.
 
@@ -132,6 +132,26 @@ Fix city 1 as origin. For $S\subseteq \mathcal{V}\setminus\{1\}$ and $j\in S$, d
  \min\limits_{k\in S\setminus\{j\}} \big( C(S\setminus\{j\},k)+d_{kj}\big), & |S|\ge 2.
  \end{cases}
 \end{equation}
-The optimal tour cost is $\min_{j\ne 1}\big(C(\mathcal{V}\setminus\{1\},j)+d_{j1}\big)$. The complexity is $O(n^2 2^n)$ time and $O(n2^n)$ space, which is infeasible for $n=52$; however, it is useful for validating small subsets.
+The optimal tour cost is $\min_{j\ne 1}\big(C(\mathcal{V}\setminus\{1\},j)+d_{j1}\big)$ \cite{HeldKarp1962,Bellman1962}. The complexity is $O(n^2 2^n)$ time and $O(n2^n)$ space, which is infeasible for $n=52$; however, it is useful for validating small subsets.
+
+\begin{thebibliography}{99}
+\bibitem{GareyJohnson1979} M. R. Garey and D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. W. H. Freeman, 1979.
+\bibitem{Karp1972} R. M. Karp. Reducibility among combinatorial problems. In Complexity of Computer Computations, 1972.
+\bibitem{Reinelt1995} G. Reinelt. TSPLIB—A traveling salesman problem library. ORSA Journal on Computing, 3(4):376–384, 1991. (TSPLIB95 updated online collection).
+\bibitem{Applegate2006Concorde} D. L. Applegate, R. E. Bixby, V. Chvátal, and W. J. Cook. The Traveling Salesman Problem: A Computational Study. Princeton University Press, 2006. (See also the Concorde TSP Solver website.).
+\bibitem{HeldKarp1962} M. Held and R. M. Karp. A dynamic programming approach to sequencing problems. Journal of the Society for Industrial and Applied Mathematics, 10(1):196–210, 1962.
+\bibitem{Bellman1962} R. Bellman. Dynamic programming treatment of the traveling salesman problem. Journal of the ACM, 9(1):61–63, 1962.
+\bibitem{Flood1956} M. M. Flood. The traveling-salesman problem. Operations Research, 4(1):61–75, 1956.
+\bibitem{Rosenkrantz1977} D. J. Rosenkrantz, R. E. Stearns, and P. M. Lewis. An analysis of several heuristics for the traveling salesman problem. SIAM Journal on Computing, 6(3):563–581, 1977.
+\bibitem{Croes1958} G. A. Croes. A method for solving traveling-salesman problems. Operations Research, 6(6):791–812, 1958.
+\bibitem{DFJ1954} G. B. Dantzig, R. Fulkerson, and S. Johnson. Solution of a large-scale traveling-salesman problem. Operations Research, 2(4):393–410, 1954.
+\bibitem{PadbergRinaldi1991} M. W. Padberg and G. Rinaldi. A branch-and-cut algorithm for the resolution of large-scale symmetric traveling salesman problems. SIAM Review, 33(1):60–100, 1991.
+\bibitem{MTZ1960} C. E. Miller, A. W. Tucker, and R. A. Zemlin. Integer programming formulation of traveling salesman problems. Journal of the ACM, 7(4):326–329, 1960.
+\bibitem{Goldberg1989} D. E. Goldberg. Genetic Algorithms in Search, Optimization and Machine Learning. Addison-Wesley, 1989.
+\bibitem{Davis1985} L. Davis. Applying adaptive algorithms to epistatic domains. IJCAI, 1985. (Introduces the order crossover operator.)
+\bibitem{Michalewicz1996} Z. Michalewicz. Genetic Algorithms + Data Structures = Evolution Programs. Springer, 3rd ed., 1996.
+\bibitem{Kirkpatrick1983} S. Kirkpatrick, C. D. Gelatt, and M. P. Vecchi. Optimization by simulated annealing. Science, 220(4598):671–680, 1983.
+\bibitem{Cerny1985} V. Černý. Thermodynamical approach to the traveling salesman problem: An efficient simulation algorithm. Journal of Optimization Theory and Applications, 45(1):41–51, 1985.
+\end{thebibliography}
 
 \end{document}
