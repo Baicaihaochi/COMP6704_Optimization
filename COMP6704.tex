@@ -56,58 +56,28 @@ This eliminates subtours without callbacks and is suitable for open-source solve
 All four methods in this section are executable on Berlin52. We provide rigorous definitions, algorithmic steps, complexity, and termination criteria.
 
 \subsection{Nearest Neighbor + 2-opt}
-Let a tour be a cyclic permutation $\pi=\langle \pi_1,\dots,\pi_n\rangle$. The Nearest Neighbor (NN) constructor \cite{Flood1956,Rosenkrantz1977} initializes $\pi_1=s$ (e.g., $s=1$) and iteratively selects
+Let a tour be a cyclic permutation $\pi=\langle \pi_1,\dots,\pi_n\rangle$. The Nearest Neighbor (NN) heuristic \cite{Flood1956,Rosenkrantz1977} constructs a Hamiltonian cycle by fixing a start city $\pi_1=s$ (e.g., $s=1$) and iteratively appending the closest unvisited city according to
 \begin{equation}
  \pi_{k+1}=\arg\min_{j\in \mathcal{V}\setminus\{\pi_1,\dots,\pi_k\}} d_{\pi_k j}.
 \end{equation}
-For 2-opt \cite{Croes1958}, for $1\le i<j\le n$ (with $\pi_{n+1}\equiv\pi_1$) consider swapping edges $(\pi_i,\pi_{i+1})$ and $(\pi_j,\pi_{j+1})$; accept if
+The resulting tour is refined by 2-opt local search \cite{Croes1958}. For indices $1\le i<j\le n$ (with $\pi_{n+1}\equiv\pi_1$), we consider exchanging edges $(\pi_i,\pi_{i+1})$ and $(\pi_j,\pi_{j+1})$; if
 \begin{equation}
  \Delta=\big(d_{\pi_i\pi_{i+1}}+d_{\pi_j\pi_{j+1}}\big)-\big(d_{\pi_i\pi_j}+d_{\pi_{i+1}\pi_{j+1}}\big) > 0,
 \end{equation}
-and reverse the subpath $\langle \pi_{i+1},\dots,\pi_j\rangle$.
-
-\textbf{Termination.} Use first-improvement scans until a full pass yields no improving move, or until a maximum number of passes $K_{\max}$.
-
-\textbf{Complexity.} NN construction is $O(n^2)$. A full 2-opt pass is $O(n^2)$; the number of improving passes is instance-dependent (typically small for $n=52$).
+we reverse the subpath $\langle \pi_{i+1},\dots,\pi_j\rangle$ to obtain an improving tour. We adopt a first-improvement scanning scheme and terminate when a complete pass produces no improvement, or after a prescribed maximum number of passes $K_{\max}$. The NN construction costs $O(n^2)$ time, a full 2-opt pass costs $O(n^2)$, and for $n=52$ the number of improving passes is typically small in practice.
 
 \subsection{ILP (Lazy SEC + MTZ)}
-\textbf{Lazy-SEC mode.} Based on the DFJ formulation \cite{DFJ1954}, solve the symmetric degree-only model; when an integer solution $x^*$ is found, build $G^*=(\mathcal{V},E^*)$ with $E^*=\{\{i,j\}:x^*_{ij}=1\}$, detect connected components/subtours, and add the violated SECs. Iterate until optimality or time limit in a branch-and-cut framework \cite{PadbergRinaldi1991,Applegate2006Concorde}.
-
-\textbf{MTZ fallback.} Solve the directed MTZ model \cite{MTZ1960} with $y,u$ variables when lazy callbacks are unavailable.
-
-\textbf{Termination.} Report optimality when the MIP gap is zero; otherwise stop at a preset time limit $\tau$ and report the best incumbent and MIP gap.
-
-\textbf{Complexity.} Exponential in the worst case; practically effective on Berlin52 with a modern MIP solver.
+To obtain exact solutions, we employ an integer linear programming approach in two modes. In the lazy subtour elimination mode based on the DFJ formulation \cite{DFJ1954}, we solve the symmetric degree-only relaxation and, whenever the solver finds an integer incumbent $x^*$, we form the graph $G^*=(\mathcal{V},E^*)$ with $E^*=\{\{i,j\}:x^*_{ij}=1\}$, detect subtours (e.g., via connected components), and add the corresponding cutset inequalities. This branch-and-cut procedure \cite{PadbergRinaldi1991,Applegate2006Concorde} iterates until optimality is certified or a time limit is reached. When callback-based lazy constraints are unavailable, we fall back to the directed MTZ formulation \cite{MTZ1960} with arc variables and order variables, which eliminates subtours without separation. We declare optimality when the reported MIP gap is zero; otherwise, after a preset time limit $\tau$ we report the incumbent solution and its gap. Although the worst-case complexity is exponential, Berlin52 is tractable in practice with modern MIP solvers.
 
 \subsection{Genetic Algorithm}
-\textbf{Encoding.} A chromosome is a permutation $\mathbf{p}=\langle p_1,\dots,p_n\rangle$ \cite{Goldberg1989}.
-
-\textbf{Fitness.} $f(\mathbf{p})=1/L(\mathbf{p})$ where $L(\mathbf{p})=\sum_{k=1}^{n-1} d_{p_k p_{k+1}}+d_{p_n p_1}$.
-
-\textbf{Selection.} Tournament of size $k$ selects $\arg\max f$.
-
-\textbf{Crossover (OX).} Choose cut points $a<b$; copy segment $p_a,\dots,p_b$ from parent 1; fill remaining positions by scanning parent 2 in order, skipping duplicates \cite{Davis1985}.
-
-\textbf{Mutation (inversion or swap).} Pick indices $i<j$ and reverse $p_i,\dots,p_j$ (or swap two cities) with probability $p_m$ \cite{Michalewicz1996}.
-
-\textbf{Local improvement (optional).} Apply 2-opt to the best $q\%$ individuals every $r$ generations (memetic GA).
-
-\textbf{Termination.} Run for $G$ generations or stop early if no improvement for $S$ consecutive generations.
-
-\textbf{Complexity.} $O\big(\text{pop}\times G\times (n + C_{2\text{-opt}})\big)$, where $C_{2\text{-opt}}$ is the amortized cost of local improvement when enabled.
+We adopt a permutation-encoded genetic algorithm \cite{Goldberg1989} in which each chromosome is a tour $\mathbf{p}=\langle p_1,\dots,p_n\rangle$. The fitness is taken as the inverse tour length, $f(\mathbf{p})=1/L(\mathbf{p})$, with $L(\mathbf{p})=\sum_{k=1}^{n-1} d_{p_k p_{k+1}}+d_{p_n p_1}$. Parent selection uses tournament sampling of size $k$, promoting fitter tours while maintaining diversity. Offspring are generated by order crossover (OX) \cite{Davis1985}: a contiguous segment from one parent is copied into the child, and the remaining positions are filled by scanning the other parent and inserting cities in order while skipping duplicates. Mutation maintains exploration by either inverting a randomly chosen subsequence or swapping two randomly chosen positions \cite{Michalewicz1996}. To intensify search, an optional memetic step applies 2-opt to the top fraction of the population every fixed number of generations. The algorithm runs for a prescribed number of generations $G$ or terminates early if the best fitness has not improved for $S$ consecutive generations. The computational effort scales as $O(\text{pop}\, G\, (n + C_{2\text{-opt}}))$, where $C_{2\text{-opt}}$ denotes the amortized cost of local improvement when enabled.
 
 \subsection{Simulated Annealing}
-Let a move be a 2-opt reversal. Given current tour cost $L$ and candidate cost $L'$, accept with probability (Metropolis rule)
+We implement simulated annealing over the 2-opt neighborhood \cite{Kirkpatrick1983,Cerny1985}. Candidate tours are proposed by random 2-opt reversals, and a candidate of cost $L'$ is accepted from a current tour of cost $L$ with Metropolis probability
 \begin{equation}
- \mathbb{P}[\text{accept}]=\min\{1,\exp(-(L'-L)/T)\}.
+ \Pr(\text{accept})=\min\{1,\exp(-(L'-L)/T)\}.
 \end{equation}
-Use geometric cooling $T_{t+1}=\alpha T_t$ with $\alpha\in(0,1)$ and a fixed number of iterations per temperature level; simulated annealing was introduced for combinatorial optimization in \cite{Kirkpatrick1983,Cerny1985}.
-
-\textbf{Initialization.} Start from NN or a random permutation; set $T_0$ from a percentile of sampled 2-opt cost increases.
-
-\textbf{Termination.} Stop when $T<10^{-3}$ or no improvement for 10 consecutive temperatures (as our default), or when a time/iteration budget is reached.
-
-\textbf{Complexity.} Let $I$ be total move evaluations; complexity is $O(I)$ with $O(1)$ incremental 2-opt cost updates per proposal.
+The temperature follows a geometric schedule $T_{t+1}=\alpha T_t$ with $\alpha\in(0,1)$ and a fixed number of evaluations per temperature level. Initialization uses either an NN tour or a random permutation; the initial temperature $T_0$ is set from a percentile of sampled positive 2-opt cost increases so that uphill moves are initially accepted with reasonable probability. We terminate when $T<10^{-3}$ or when the best solution has not improved for 10 consecutive temperature levels, or earlier if a time or iteration budget is reached. Letting $I$ denote the total number of evaluated proposals, the overall time is $O(I)$, using constant-time incremental updates for 2-opt move evaluation.
 
 \section{Experiments}
 We evaluate all four methods on Berlin52.
