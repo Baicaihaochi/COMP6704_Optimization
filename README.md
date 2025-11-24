@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Comprehensive implementation of five solution methods for the Berlin52 Traveling Salesman Problem from TSPLIB, developed for COMP6704 Advanced Topics in Optimization (PolyU Fall 2025).
+Comprehensive implementation of five solution methods for the Berlin52 Traveling Salesman Problem from TSPLIB.
 
 ## 📋 Overview
 
@@ -54,7 +54,6 @@ python run_experiments.py
 ```
 optimization_personal/
 ├── berlin52.tsp              # TSPLIB data file
-├── COMP6704.tex              # LaTeX report
 ├── requirements.txt          # Python dependencies
 ├── README.md                 # This file
 ├── src/
