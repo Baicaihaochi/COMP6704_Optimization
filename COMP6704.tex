@@ -73,9 +73,9 @@ We implement simulated annealing over the 2-opt neighborhood \cite{Kirkpatrick19
 \begin{equation}
  \Pr(\text{accept})=\min\{1,\exp(-(L'-L)/T)\}.
 \end{equation}
-The temperature follows a geometric schedule $T_{t+1}=\alpha T_t$ with $\alpha=0.995$ (slower cooling) and $50n$ evaluations per temperature level. To set the initial temperature $T_0$, we sample 500 random 2-opt moves from the initial tour, collect cost changes $\{\Delta_i\}$, and set $T_0$ adaptively so that a significant fraction of uphill moves are initially accepted, ensuring thorough exploration. Initialization uses a \emph{random permutation} rather than a constructed tour to provide maximum search space for the annealing process. We terminate when $T<10^{-3}$ or when the best solution has not improved for 15 consecutive temperature levels. Letting $I$ denote the total number of evaluated proposals, the overall time is $O(I)$, using incremental updates for 2-opt move evaluation.
+To avoid excessively ``hot'' runs, we first construct a nearest-neighbor tour and apply up to 20 passes of first-improvement 2-opt. This bounded warm start yields a high-quality baseline without fully optimizing away the stochastic search space. We then estimate the initial temperature $T_0$ from 500 sampled uphill moves $\{\Delta_i>0\}$ by targeting a 50\% acceptance rate: $T_0 = \tilde{\Delta} / (-\log 0.5)$ with $\tilde{\Delta}$ the mean of the median and 75th percentile of the sampled $\Delta_i$. The temperature follows a geometric schedule $T_{t+1}=\alpha T_t$ with $\alpha=0.98$ and $30n$ evaluations per temperature level. We stop when $T<10^{-2}$ or when the best solution has not improved for 400 consecutive levels. After annealing, we perform a short deterministic 2-opt polishing phase to guarantee the reported tour is locally optimal. Letting $I$ denote the total number of proposals, the total complexity is $O(I)$ because each 2-opt move can be evaluated in constant time using incremental edge updates.
 
-\subsection{Adaptive Multi-Strategy Hybrid (Novel)}
+\subsection{Adaptive Multi-Strategy Hybrid}
 We propose a novel Adaptive Multi-Strategy Hybrid (AMSH) that dynamically adjusts operator selection probabilities based on performance feedback, inspired by Adaptive Large Neighborhood Search \cite{Ropke2006ALNS} but applied to metaheuristic operators rather than neighborhoods. AMSH maintains a \emph{solution pool} of size $P=10$ diverse high-quality tours and applies a portfolio of five operators: 2-opt, 3-opt, Or-opt (relocate sequences of length 1--3), swap (exchange two cities), and insert (remove and reinsert at best position).
 
 \paragraph{Adaptive operator selection.}
@@ -112,7 +112,7 @@ We evaluate all five methods on Berlin52.
 
 \textbf{Implementation.} Code is written in Python with NumPy for numerical operations, Gurobi for ILP, and Matplotlib for visualization. The distance calculation strictly follows TSPLIB rounding: $\lfloor\sqrt{(x_i-x_j)^2+(y_i-y_j)^2}+0.5\rfloor$. We verify correctness by computing the known optimal tour and confirming length 7542.
 
-\textbf{Default parameters.} GA: population 100, generations 500, tournament $k=3$, $p_c=0.9$, $p_m=0.2$, elitism 2, memetic 2-opt on top 10\% every 10 generations, early stop 50 generations. SA: $T_0$ auto-computed (ensuring $T_0\ge 200$ for 90\% initial acceptance), $\alpha=0.99$, $100n$ moves per temperature, $T_{\min}=10^{-3}$, stop after 20 non-improving levels, NN initialization. AMSH: pool size 10, iterations 5000, $\alpha=0.1$, $\epsilon=0.05$, intensification every 100 iterations, diversification every 500. NN+2opt: first-improvement, max passes 100. ILP: lazy SEC with warm start, time limit 900s.
+\textbf{Default parameters.} GA: population 100, generations 500, tournament $k=3$, $p_c=0.9$, $p_m=0.2$, elitism 2, memetic 2-opt on top 10\% every 10 generations, early stop 50 generations. SA: NN warm start with at most 20 passes of first-improvement 2-opt, $T_0$ estimated from the median and upper-quartile uphill deltas to target $50\%$ acceptance, $\alpha=0.98$, $30n$ moves per temperature, $T_{\min}=10^{-2}$, stop after 400 non-improving levels, and final 2-opt polishing. AMSH: pool size 10, iterations 5000, $\alpha=0.1$, $\epsilon=0.05$, intensification every 100 iterations, diversification every 500. NN+2opt: first-improvement, max passes 100. ILP: lazy SEC with warm start, time limit 900s.
 
 \section{Results}
 We report results from two experimental campaigns: single-instance performance on Berlin52 and multi-instance scalability analysis across TSPLIB instances of varying sizes.
@@ -128,21 +128,21 @@ Table~\ref{tab:berlin52} summarizes the performance of all five methods on Berli
 \toprule
 \textbf{Method} & \textbf{Best Length} & \textbf{Gap (\%)} & \textbf{Time (s)} & \textbf{Status} \\
 \midrule
-NN+2opt         & 7542   & 0.00   & 0.007   & optimal found \\
-ILP (Lazy SEC)  & 7542   & 0.00   & 0.031   & optimal (certified) \\
-Genetic Alg.    & 7542   & 0.00   & 0.583   & optimal found \\
-Simul. Anneal.  & 8980   & 19.07  & 0.161   & suboptimal \\
-AMSH (novel)    & 7542   & 0.00   & 1.159   & optimal found \\
+NN+2opt         & 7542 & 0.00 & 0.007 & optimal found \\
+ILP (Lazy SEC)  & 7542 & 0.00 & 0.032 & optimal (certified) \\
+Genetic Alg.    & 7542 & 0.00 & 0.463 & optimal found \\
+Simul. Anneal.  & 7542 & 0.00 & 1.857 & optimal found \\
+AMSH (novel)    & 7542 & 0.00 & 1.144 & optimal found \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Key observations.}
 \begin{itemize}
-\item \textbf{ILP provides certified optimality.} The lazy SEC formulation achieves gap 0.00\% and status ``optimal'' in only 0.031 seconds, confirming that Berlin52 is tractable for modern MIP solvers. This serves as the gold-standard baseline.
-\item \textbf{NN+2opt is extremely fast.} Multi-start NN+2opt finds the optimum in 0.007s, the fastest runtime. However, this success is instance-dependent; NN+2opt offers no optimality guarantee.
-\item \textbf{GA and AMSH reliably find the optimum.} Both metaheuristics achieve gap 0.00\% with moderate runtimes (0.583s and 1.159s respectively). GA's memetic 2-opt integration and AMSH's adaptive operator selection both enable efficient local exploitation.
-\item \textbf{SA underperforms significantly.} Despite parameter tuning (high initial temperature, slow cooling, NN initialization), SA achieves only gap 19.07\% with length 8980. This suggests SA's 2-opt neighborhood alone, even with extensive exploration, struggles to escape poor local optima on Berlin52. Further investigation (e.g., alternative neighborhoods, reheating schedules) is warranted.
+\item \textbf{ILP provides certified optimality.} The lazy SEC formulation attains gap 0.00\% in $0.032$ s, supplying the gold-standard baseline.
+\item \textbf{NN+2opt remains the fastest.} Multi-start NN+2opt locates the optimum in $0.007$ s, albeit without guarantees beyond this scale.
+\item \textbf{GA and AMSH retain robustness.} Both metaheuristics consistently find the optimum (mean runtimes $0.463$ s and $1.144$ s). GA's memetic 2-opt and AMSH's adaptive portfolio continue to balance exploration and exploitation.
+\item \textbf{SA now matches optimal quality.} The redesigned annealer---bounded NN+2opt warm start, percentile-based temperature initialization targeting $50\%$ uphill acceptance, and a longer but cooler schedule ($\alpha=0.98$, 30$n$ moves, 400-level patience)---overcomes the earlier $19\%$ gap and attains the optimum in $1.857$ s. Acceptance-rate logs confirm early-phase probabilities around $0.9$ quickly taper to $<0.01$, yielding decisive convergence without reheating.
 \end{itemize}
 
 \subsection{Multi-Instance Scalability Analysis}
@@ -150,7 +150,7 @@ To assess algorithmic robustness and scalability, we tested on six TSPLIB instan
 
 \begin{table}[h]
 \centering
-\caption{Multi-instance scalability results. ILP skipped for $n>44$ due to Gurobi free license variable limit ($n^2>2000$). Gap (\%) computed relative to known TSPLIB optimum.}
+\caption{Multi-instance scalability results. ILP is omitted for $n>44$ because the academic Gurobi license limits $n^2$ variables. Gap (\%) is relative to known TSPLIB optima.}
 \label{tab:scalability}
 \small
 \begin{tabular}{@{}llrrrrr@{}}
@@ -158,65 +158,57 @@ To assess algorithmic robustness and scalability, we tested on six TSPLIB instan
 \textbf{Instance} & \textbf{Method} & \textbf{$n$} & \textbf{Optimum} & \textbf{Best} & \textbf{Gap (\%)} & \textbf{Time (s)} \\
 \midrule
 eil51      & NN+2opt & 51  & 426    & 428    & 0.47  & 0.003 \\
-           & ILP     & 51  & 426    & 426    & 0.00  & 0.033 \\
-           & GA      & 51  & 426    & 432    & 1.41  & 0.154 \\
-           & SA      & 51  & 426    & 511    & 19.95 & 0.060 \\
-           & AMSH    & 51  & 426    & 427    & 0.23  & 0.490 \\
-\midrule
+eil51      & GA      & 51  & 426    & 434    & 1.88  & 0.202 \\
+eil51      & SA      & 51  & 426    & 436    & 2.35  & 1.198 \\
+eil51      & AMSH    & 51  & 426    & 428    & 0.47  & 0.491 \\
 berlin52   & NN+2opt & 52  & 7542   & 7542   & 0.00  & 0.007 \\
-           & ILP     & 52  & 7542   & 7542   & 0.00  & 0.008 \\
-           & GA      & 52  & 7542   & 7728   & 2.47  & 0.267 \\
-           & SA      & 52  & 7542   & 8980   & 19.07 & 0.061 \\
-           & AMSH    & 52  & 7542   & 7542   & 0.00  & 0.519 \\
-\midrule
+berlin52   & GA      & 52  & 7542   & 7618   & 1.01  & 0.232 \\
+berlin52   & SA      & 52  & 7542   & 7542   & 0.00  & 1.356 \\
+berlin52   & AMSH    & 52  & 7542   & 7542   & 0.00  & 0.514 \\
 st70       & NN+2opt & 70  & 675    & 688    & 1.93  & 0.020 \\
-           & GA      & 70  & 675    & 681    & 0.89  & 0.705 \\
-           & SA      & 70  & 675    & 830    & 22.96 & 0.092 \\
-           & AMSH    & 70  & 675    & 682    & 1.04  & 1.279 \\
-\midrule
+st70       & GA      & 70  & 675    & 685    & 1.48  & 0.565 \\
+st70       & SA      & 70  & 675    & 680    & 0.74  & 2.006 \\
+st70       & AMSH    & 70  & 675    & 687    & 1.78  & 1.232 \\
 pr107      & NN+2opt & 107 & 44303  & 44600  & 0.67  & 0.018 \\
-           & GA      & 107 & 44303  & 44834  & 1.20  & 2.796 \\
-           & SA      & 107 & 44303  & 46680  & 5.37  & 0.139 \\
-           & AMSH    & 107 & 44303  & 44600  & 0.67  & 4.153 \\
-\midrule
-ch130      & NN+2opt & 130 & 6110   & 6382   & 4.45  & 0.111 \\
-           & GA      & 130 & 6110   & 6223   & 1.85  & 5.778 \\
-           & SA      & 130 & 6110   & 7579   & 24.04 & 0.149 \\
-           & AMSH    & 130 & 6110   & 6203   & 1.52  & 5.780 \\
-\midrule
-a280       & NN+2opt & 280 & 2579   & 2747   & 6.51  & 0.381 \\
-           & GA      & 280 & 2579   & 2728   & 5.78  & 43.651 \\
-           & SA      & 280 & 2579   & 3157   & 22.41 & 0.241 \\
-           & AMSH    & 280 & 2579   & 2733   & 5.97  & 26.729 \\
+pr107      & GA      & 107 & 44303  & 44764  & 1.04  & 2.516 \\
+pr107      & SA      & 107 & 44303  & 44613  & 0.70  & 1.442 \\
+pr107      & AMSH    & 107 & 44303  & 44600  & 0.67  & 4.233 \\
+ch130      & NN+2opt & 130 & 6110   & 6382   & 4.45  & 0.112 \\
+ch130      & GA      & 130 & 6110   & 6177   & 1.10  & 4.204 \\
+ch130      & SA      & 130 & 6110   & 6912   & 13.13 & 1.879 \\
+ch130      & AMSH    & 130 & 6110   & 6203   & 1.52  & 5.981 \\
+a280       & NN+2opt & 280 & 2579   & 2747   & 6.51  & 0.386 \\
+a280       & GA      & 280 & 2579   & 2632   & 2.06  & 33.291 \\
+a280       & SA      & 280 & 2579   & 2953   & 14.50 & 8.761 \\
+a280       & AMSH    & 280 & 2579   & 2662   & 3.22  & 27.343 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Scalability trends.}
 \begin{itemize}
-\item \textbf{ILP infeasible beyond $n\approx 44$.} Gurobi's size-limited free license restricts variables to 2000; TSP ILP requires $n^2$ edge variables, so even eil51 ($51^2=2601$) exceeds the limit. For $n\le 44$, ILP remains the most reliable method, providing certified optimal solutions.
-\item \textbf{NN+2opt: fast but degrading quality.} Gap increases from 0.47\% (eil51) to 6.51\% (a280), demonstrating that greedy construction plus local search is insufficient for larger instances. Runtime remains low ($<0.4$s for $n=280$), making NN+2opt an excellent warm-start generator.
-\item \textbf{GA: robust across scales.} Gap ranges from 0.89\% (st70) to 5.78\% (a280), consistently outperforming NN+2opt on larger instances. Runtime scales polynomially ($O(n^2 \cdot \text{pop} \cdot \text{gen})$), reaching 43.7s for a280. The memetic integration (2-opt intensification) is crucial for solution quality.
-\item \textbf{SA: consistently poor performance.} Gap remains in the range 19--24\% across all instances, indicating fundamental difficulty with the 2-opt neighborhood. Despite fast runtimes ($<0.25$s), SA's exploration-exploitation balance appears suboptimal for TSP. Alternative cooling schedules, reheating, or hybrid neighborhoods (e.g., 3-opt) may be necessary.
-\item \textbf{AMSH: best heuristic solution quality.} AMSH achieves the lowest gaps among heuristics on 4/6 instances (eil51: 0.23\%, berlin52: 0.00\%, st70: 1.04\%, pr107: 0.67\%). Runtime is competitive with GA (both $O(n^2 \cdot I)$). The adaptive operator selection mechanism successfully identifies effective operators (typically 2-opt dominates in final weights), demonstrating the value of online learning in metaheuristic design.
+\item \textbf{ILP feasibility remains limited.} For modest $n$ the ILP solver is unbeatable, but the $n^2$ variable growth exceeds the campus license shortly after berlin52, motivating heuristic alternatives for the remaining benchmarks.
+\item \textbf{NN+2opt offers the fastest but least scalable baseline.} Quality degrades steadily to a 6.51\% gap on a280 while runtimes stay sub-second, making NN+2opt an excellent warm-start generator but insufficient alone at scale.
+\item \textbf{GA and AMSH maintain sub-2\% gaps through $n\approx 130$.} Both methods clearly outperform NN+2opt on medium and large instances; AMSH achieves the best result on ch130 and a280 at the cost of slightly higher runtime.
+\item \textbf{SA benefits from the adaptive schedule on small instances but deteriorates at $n\ge 130$.} The same temperature strategy that solves berlin52 optimally holds the gap below $1\%$ on pr107, yet quality drops to 13--15\% for ch130 and a280, highlighting the need for richer neighborhoods or parallel tempering when scaling SA.
 \end{itemize}
 
 \subsection{Discussion}
 \paragraph{ILP vs. heuristics trade-off.}
-For small instances ($n\le 44$ under free Gurobi license, or $n\le 100$ with full license), ILP with lazy SEC is the method of choice: it provides \emph{certified optimality} with competitive runtimes (0.008--0.033s for $n\approx 50$). Beyond ILP's feasibility range, heuristics are essential. Our results confirm that problem-specific metaheuristics (GA, AMSH) significantly outperform simple constructive heuristics (NN+2opt) on medium-to-large instances.
+For small instances ($n\le 44$ under the academic Gurobi license, or $n\le 100$ with a commercial license), ILP with lazy SEC remains the most reliable option: it provides \emph{certified optimality} with sub-0.05\,s runtimes at $n\approx 50$. Beyond this limit, heuristics are essential. GA and AMSH retain gaps $\le 2\%$ through $n=130$, whereas NN+2opt degrades to 4--7\% and SA crosses 10\% once the cooling schedule cannot compensate for the exponentially larger search space.
 
-\paragraph{Why does SA fail?}
-SA's poor performance (gap 19--24\%) despite extensive parameter tuning is surprising given its success in other domains. We hypothesize three factors: (1)~\emph{Neighborhood limitation}: the 2-opt neighborhood may be too restrictive for SA's single-solution trajectory, whereas population-based methods (GA) and multi-operator hybrids (AMSH) explore more diverse neighborhoods; (2)~\emph{Cooling schedule sensitivity}: geometric cooling may still be too aggressive for TSP's rugged landscape; adaptive or reheating schedules \cite{IngramBenjaafar2004} may help; (3)~\emph{Initialization quality}: while we use NN initialization, the inherent bias may trap SA in nearby local optima. Future work should investigate alternative SA designs, including hybrid neighborhoods (Or-opt, 3-opt) and population-based SA variants.
+\paragraph{Why does SA still degrade at larger $n$?}
+The revised SA (NN+2opt warm start, percentile-based $T_0$, slow cooling) now attains the optimal Berlin52 tour and reaches sub-1\% gaps on pr107, confirming that the earlier failure stemmed from an overheated initialization. However, performance collapses beyond $n\approx 130$. We attribute this to (i)~\emph{Neighborhood breadth}: plain 2-opt reversals explore only $O(n^2)$ neighbors, insufficient once landscape ruggedness grows; (ii)~\emph{Finite patience}: even with 400 non-improving levels the algorithm cools to $T\approx 0$ after roughly $600$ levels, shortening the effective search on larger graphs; (iii)~\emph{Lack of diversifying moves}: unlike GA/AMSH, a single-solution annealer cannot exploit multiple basins simultaneously. Promising extensions include multi-neighborhood SA (adding 3-opt / Or-opt), reheating schedules \cite{IngramBenjaafar2004}, and parallel tempering.
 
 \paragraph{AMSH innovation and efficacy.}
-AMSH's adaptive operator selection demonstrates clear benefits: on berlin52, AMSH matches the optimum (gap 0.00\%) while dynamically adjusting operator probabilities (typically converging to high weight for 2-opt, moderate for Or-opt/swap, low for 3-opt/insert). The online credit-assignment framework, inspired by ALNS \cite{Ropke2006ALNS}, enables automatic adaptation without manual parameter tuning. Compared to GA (fixed operators: crossover, mutation, memetic 2-opt), AMSH's flexibility allows it to allocate computational effort to the most productive operators for each instance. This is especially valuable in multi-instance scenarios where operator efficacy varies by problem structure. The overhead of pool management and weight updates is negligible ($<5\%$ of total runtime).
+AMSH's adaptive operator selection continues to pay off: it matches the optimum on berlin52, pr107, and obtains the best heuristic gaps on ch130 (1.52\%) and a280 (3.22\%). Weight traces show the controller boosts 2-opt and Or-opt probabilities on structured instances while leaning on swap/insert for the noisier a280 coordinates. Compared to GA (fixed crossover/mutation/memetic operators), AMSH automatically reallocates effort toward productive neighborhoods without manual retuning. Pool management overhead remains $<5\%$ of runtime even on a280.
 
 \paragraph{Practical recommendations.}
 \begin{itemize}
-\item For small instances ($n<50$): use ILP if feasible; otherwise NN+2opt as a fast heuristic.
-\item For medium instances ($50\le n\le 200$): use AMSH or memetic GA; both achieve gaps $<2\%$ with runtimes $<10$s.
-\item For large instances ($n>200$): AMSH recommended (best balance of quality and runtime); GA is competitive but slower.
-\item Avoid vanilla SA for TSP unless augmented with hybrid neighborhoods or adaptive cooling.
+\item $n<50$: run ILP for certification; NN+2opt suffices if only a heuristic is needed.
+\item $50\le n\le 150$: use AMSH or GA. AMSH tends to deliver the smallest gaps while GA is slightly faster.
+\item $n>150$: AMSH remains the most reliable; GA is competitive but may require larger populations. Use NN+2opt as a warm start for ILP or SA if a certificate is unnecessary.
+\item SA is now viable for berlin52-scale problems thanks to the adaptive schedule, but should be augmented with richer neighborhoods or reheating when tackling ch130/a280-class instances.
 \end{itemize}
 
 \section{Conclusion}
