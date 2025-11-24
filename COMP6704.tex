@@ -17,13 +17,13 @@
 \maketitle
 
 \begin{abstract}
-We study the classic Euclidean Traveling Salesman Problem (TSP) on the Berlin52 TSPLIB instance. We present a rigorous mathematical formulation aligned with TSPLIB rounding, and evaluate four methods that all run on Berlin52: a greedy Nearest Neighbor construction with 2-opt local search, an exact Integer Linear Programming approach with two execution modes (lazy subtour elimination via branch-and-cut and an MTZ fallback), a Genetic Algorithm with permutation encoding, and a Simulated Annealing metaheuristic with a 2-opt neighborhood. We additionally include the Held--Karp dynamic programming recurrence as a theoretical appendix to contextualize limits of exact dynamic programming. We outline an experimental protocol to compare solution quality, optimality gap, and runtime against the known optimum 7542.
+We study the classic Euclidean Traveling Salesman Problem (TSP) on the Berlin52 TSPLIB instance. We present a rigorous mathematical formulation aligned with TSPLIB rounding, and evaluate five methods that all run on Berlin52: a greedy Nearest Neighbor construction with 2-opt local search, an exact Integer Linear Programming approach using Gurobi with lazy subtour elimination via branch-and-cut, a Genetic Algorithm with permutation encoding and memetic 2-opt, a Simulated Annealing metaheuristic with adaptive temperature initialization, and a novel Adaptive Multi-Strategy Hybrid (AMSH) that dynamically adjusts operator probabilities based on performance feedback. We outline a comprehensive experimental protocol to compare solution quality, optimality gap, convergence behavior, and runtime against the known optimum 7542. Complete implementation and reproducible experiments are provided in the accompanying code repository.\footnote{Code available at: https://github.com/[your-username]/berlin52-tsp}
 \end{abstract}
 
 \section{Introduction}
 The Traveling Salesman Problem (TSP) seeks a minimum-length Hamiltonian cycle visiting each city exactly once. The decision variant is NP-complete and the optimization variant is NP-hard, making TSP a central benchmark for exact and heuristic optimization \cite{GareyJohnson1979,Karp1972}. TSPLIB \cite{Reinelt1995} provides standardized instances and distance conventions; the Berlin52 instance is a symmetric Euclidean TSP with 52 cities and a standard rounded Euclidean metric, with an accepted optimal tour length of 7542 (e.g., established by Concorde \cite{Applegate2006Concorde}). Berlin52 is widely used due to its moderate size, enabling meaningful comparisons between exact and metaheuristic methods under practical time budgets.
 
-This paper makes three contributions: (i) a precise problem formulation using TSPLIB rounding; (ii) four Berlin52-ready methods covering constructive heuristics (Nearest Neighbor with 2-opt), metaheuristics (Genetic Algorithm, Simulated Annealing), and exact ILP in dual modes (lazy SEC branch-and-cut and MTZ); and (iii) a clear, reproducible experimental design. A dynamic programming (Held--Karp) formulation \cite{HeldKarp1962,Bellman1962} appears in the appendix for completeness but is not executed at full size due to exponential state growth.
+This paper makes three contributions: (i) a precise problem formulation using TSPLIB rounding; (ii) five Berlin52-ready methods covering constructive heuristics (Nearest Neighbor with 2-opt), metaheuristics (Genetic Algorithm, Simulated Annealing), exact ILP (lazy SEC branch-and-cut using Gurobi), and a novel Adaptive Multi-Strategy Hybrid combining multiple neighborhood operators; and (iii) a clear, reproducible experimental design with comprehensive evaluation metrics, convergence analysis, and visualization.
 
 \section{Problem Formulation}
 Let $\mathcal{V}=\{1, \dots, n\}$, $n=52$, denote cities with coordinates $(x_i,y_i)$. TSPLIB's rounded Euclidean distance is
@@ -31,29 +31,21 @@ Let $\mathcal{V}=\{1, \dots, n\}$, $n=52$, denote cities with coordinates $(x_i,
  d_{ij}=d_{ji}=\left\lfloor \sqrt{(x_i-x_j)^2+(y_i-y_j)^2}+\tfrac{1}{2} \right\rfloor,\quad i\neq j,\qquad d_{ii}=0.
 \end{equation}
 
-\paragraph{Symmetric cutset ILP (for lazy SEC).}
-Use binary edge variables for the undirected graph: $x_{ij}\in\{0,1\}$ for $1\le i<j\le n$. The TSP can be written as
+\paragraph{Symmetric cutset ILP (lazy SEC).}
+We employ the DFJ (Dantzig-Fulkerson-Johnson) formulation with binary edge variables for the undirected graph: $x_{ij}\in\{0,1\}$ for $1\le i<j\le n$. The TSP can be written as
 \begin{align}
 \min\ & \sum_{1\le i<j\le n} d_{ij}\, x_{ij} \\
 \text{s.t. }& \sum_{\substack{j=1\\ j\ne i}}^n x_{\min(i,j),\max(i,j)}=2, && \forall i\in\mathcal{V} \quad \text{(degree)} \\
-& \sum_{\substack{i\in S,\ j\notin S\\ i<j}} x_{ij}+\sum_{\substack{i\in S,\ j\notin S\\ i>j}} x_{ji} \ge 2, && \forall S\subset\mathcal{V},\ 3\le |S| \le n-3 \quad \text{(SEC)} \\
+& \sum_{\substack{\{i,j\}: i\in S,\, j\notin S}} x_{ij} \ge 2, && \forall S\subset\mathcal{V},\ 2\le |S| \le n-2 \quad \text{(SEC)} \\
 & x_{ij}\in\{0,1\}, && 1\le i<j\le n.
 \end{align}
-The subtour elimination constraints (SEC) are separated lazily in our branch-and-cut mode by detecting subtours in candidate integer solutions.
+The exponentially many subtour elimination constraints (SEC) are separated lazily during branch-and-cut by detecting subtours via connected-component analysis in candidate integer solutions and dynamically adding violated cutset inequalities through Gurobi callbacks.
 
-\paragraph{Directed MTZ ILP (fallback).}
-Introduce binary arc variables $y_{ij}\in\{0,1\}$ for $i\ne j$, and ordering variables $u_i$ with $u_1=1$, $2\le u_i\le n$ for $i\ge 2$. The MTZ model is
-\begin{align}
-\min\ & \sum_{\substack{i,j\in\mathcal{V}\\ i\ne j}} d_{ij}\, y_{ij} \\
-\text{s.t. }& \sum_{j\ne i} y_{ij}=1,\ \sum_{i\ne j} y_{ij}=1, && \forall i\in\mathcal{V} \quad \text{(in/out-degree)} \\
-& u_i - u_j + n\, y_{ij} \le n-1, && \forall i\ne j,\ i\ge 2,\ j\ge 2 \quad \text{(MTZ)} \\
-& u_1=1,\ 2\le u_i\le n, && i\ge 2, \\
-& y_{ij}\in\{0,1\}, && i\ne j.
-\end{align}
-This eliminates subtours without callbacks and is suitable for open-source solvers; it is weaker than cutset SEC but practical at $n=52$ with time limits.
+\paragraph{Note on MTZ formulation.}
+The Miller-Tucker-Zemlin (MTZ) formulation \cite{MTZ1960} provides an alternative polynomial-sized model using ordering variables $u_i$ to eliminate subtours without callbacks. However, its LP relaxation is weaker than the cutset formulation. For Berlin52 with modern MIP solvers like Gurobi, the lazy SEC approach is preferred; MTZ is implemented as a fallback option for environments without callback support.
 
 \section{Methods}
-All four methods in this section are executable on Berlin52. We provide rigorous definitions, algorithmic steps, complexity, and termination criteria.
+All five methods in this section are executable on Berlin52. We provide rigorous definitions, algorithmic steps, complexity, and termination criteria.
 
 \subsection{Nearest Neighbor + 2-opt}
 Let a tour be a cyclic permutation $\pi=\langle \pi_1,\dots,\pi_n\rangle$. The Nearest Neighbor (NN) heuristic \cite{Flood1956,Rosenkrantz1977} constructs a Hamiltonian cycle by fixing a start city $\pi_1=s$ (e.g., $s=1$) and iteratively appending the closest unvisited city according to
@@ -66,8 +58,12 @@ The resulting tour is refined by 2-opt local search \cite{Croes1958}. For indice
 \end{equation}
 we reverse the subpath $\langle \pi_{i+1},\dots,\pi_j\rangle$ to obtain an improving tour. We adopt a first-improvement scanning scheme and terminate when a complete pass produces no improvement, or after a prescribed maximum number of passes $K_{\max}$. The NN construction costs $O(n^2)$ time, a full 2-opt pass costs $O(n^2)$, and for $n=52$ the number of improving passes is typically small in practice.
 
-\subsection{ILP (Lazy SEC + MTZ)}
-To obtain exact solutions, we employ an integer linear programming approach in two modes. In the lazy subtour elimination mode based on the DFJ formulation \cite{DFJ1954}, we solve the symmetric degree-only relaxation and, whenever the solver finds an integer incumbent $x^*$, we form the graph $G^*=(\mathcal{V},E^*)$ with $E^*=\{\{i,j\}:x^*_{ij}=1\}$, detect subtours (e.g., via connected components), and add the corresponding cutset inequalities. This branch-and-cut procedure \cite{PadbergRinaldi1991,Applegate2006Concorde} iterates until optimality is certified or a time limit is reached. When callback-based lazy constraints are unavailable, we fall back to the directed MTZ formulation \cite{MTZ1960} with arc variables and order variables, which eliminates subtours without separation. We declare optimality when the reported MIP gap is zero; otherwise, after a preset time limit $\tau$ we report the incumbent solution and its gap. Although the worst-case complexity is exponential, Berlin52 is tractable in practice with modern MIP solvers.
+\subsection{ILP with Lazy SEC}
+To obtain exact solutions, we employ integer linear programming with lazy subtour elimination using the Gurobi optimizer \cite{Gurobi}. We implement the DFJ formulation described in Section 2. Initially, we solve the degree-constrained relaxation. Whenever the MIP solver finds an integer incumbent $x^*$, we use a callback to detect subtours via breadth-first search for connected components in the solution graph $G^*=(\mathcal{V},E^*)$ with $E^*=\{\{i,j\}:x^*_{ij}=1\}$. For each proper subset $S$ forming a disconnected subtour, we add the violated cutset constraint
+\begin{equation}
+\sum_{\substack{\{i,j\}: i\in S,\, j\notin S}} x_{ij} \ge 2.
+\end{equation}
+This branch-and-cut procedure \cite{PadbergRinaldi1991} iterates until optimality is certified or a preset time limit $\tau=900$ seconds (15 minutes) is reached. We declare optimality when the reported MIP gap is zero; otherwise, we report the incumbent solution and its gap. To accelerate convergence, we provide a warm start from the NN+2opt solution. Although the worst-case complexity is exponential, Berlin52 is tractable with Gurobi in practice.
 
 \subsection{Genetic Algorithm}
 We adopt a permutation-encoded genetic algorithm \cite{Goldberg1989} in which each chromosome is a tour $\mathbf{p}=\langle p_1,\dots,p_n\rangle$. The fitness is taken as the inverse tour length, $f(\mathbf{p})=1/L(\mathbf{p})$, with $L(\mathbf{p})=\sum_{k=1}^{n-1} d_{p_k p_{k+1}}+d_{p_n p_1}$. Parent selection uses tournament sampling of size $k$, promoting fitter tours while maintaining diversity. Offspring are generated by order crossover (OX) \cite{Davis1985}: a contiguous segment from one parent is copied into the child, and the remaining positions are filled by scanning the other parent and inserting cities in order while skipping duplicates. Mutation maintains exploration by either inverting a randomly chosen subsequence or swapping two randomly chosen positions \cite{Michalewicz1996}. To intensify search, an optional memetic step applies 2-opt to the top fraction of the population every fixed number of generations. The algorithm runs for a prescribed number of generations $G$ or terminates early if the best fitness has not improved for $S$ consecutive generations. The computational effort scales as $O(\text{pop}\, G\, (n + C_{2\text{-opt}}))$, where $C_{2\text{-opt}}$ denotes the amortized cost of local improvement when enabled.
@@ -77,38 +73,56 @@ We implement simulated annealing over the 2-opt neighborhood \cite{Kirkpatrick19
 \begin{equation}
  \Pr(\text{accept})=\min\{1,\exp(-(L'-L)/T)\}.
 \end{equation}
-The temperature follows a geometric schedule $T_{t+1}=\alpha T_t$ with $\alpha\in(0,1)$ and a fixed number of evaluations per temperature level. Initialization uses either an NN tour or a random permutation; the initial temperature $T_0$ is set from a percentile of sampled positive 2-opt cost increases so that uphill moves are initially accepted with reasonable probability. We terminate when $T<10^{-3}$ or when the best solution has not improved for 10 consecutive temperature levels, or earlier if a time or iteration budget is reached. Letting $I$ denote the total number of evaluated proposals, the overall time is $O(I)$, using constant-time incremental updates for 2-opt move evaluation.
+The temperature follows a geometric schedule $T_{t+1}=\alpha T_t$ with $\alpha=0.98$ and $20n$ evaluations per temperature level. To set the initial temperature $T_0$, we sample 100 random 2-opt moves from a nearest-neighbor tour, collect positive cost increases $\{\Delta_i>0\}$, and set $T_0=\text{median}(\{\Delta_i\})/\ln 2$ so that the median uphill move is initially accepted with 50\% probability. Initialization uses a nearest-neighbor tour. We terminate when $T<10^{-3}$ or when the best solution has not improved for 10 consecutive temperature levels. Letting $I$ denote the total number of evaluated proposals, the overall time is $O(I)$, using incremental updates for 2-opt move evaluation.
+
+\subsection{Adaptive Multi-Strategy Hybrid (Novel)}
+We propose a novel Adaptive Multi-Strategy Hybrid (AMSH) that dynamically adjusts operator selection probabilities based on performance feedback, inspired by Adaptive Large Neighborhood Search \cite{Ropke2006ALNS} but applied to metaheuristic operators rather than neighborhoods. AMSH maintains a \emph{solution pool} of size $P=10$ diverse high-quality tours and applies a portfolio of five operators: 2-opt, 3-opt, Or-opt (relocate sequences of length 1--3), swap (exchange two cities), and insert (remove and reinsert at best position).
+
+\paragraph{Adaptive operator selection.}
+Each operator $o$ has a dynamic weight $w_o$ initialized to 1. At each iteration, we select an operator with probability proportional to its weight:
+\begin{equation}
+p_o = \max\left\{\epsilon,\, \frac{w_o}{\sum_{o'} w_{o'}}\right\},\quad \epsilon=0.05,
+\end{equation}
+where $\epsilon$ ensures minimum exploration. Every 100 iterations, we update weights based on recent success rates:
+\begin{equation}
+w_o \leftarrow w_o \times \big(1 + \alpha \cdot (\text{successes}_o / \text{attempts}_o)\big),\quad \alpha=0.1,
+\end{equation}
+then reset counters. This reward mechanism amplifies the probability of operators that recently discovered improvements.
+
+\paragraph{Intensification and diversification.}
+Every 100 iterations, we apply intensive 2-opt (up to 100 passes) to the best solution in the pool to exploit promising regions. Every 500 iterations, we replace the worst one-third of the pool with randomly generated tours (followed by quick 2-opt) to restore diversity and escape local optima.
+
+\paragraph{Pool management.}
+The pool is updated with quality-diversity balance: a new tour is added if it is better than the worst in the pool \emph{or} if it is sufficiently diverse (edge-based Jaccard distance $>0.15$ from all pool members). We measure diversity as
+\begin{equation}
+d(\pi,\pi') = 1 - \frac{|E(\pi)\cap E(\pi')|}{|E(\pi)\cup E(\pi')|},
+\end{equation}
+where $E(\pi)=\{\{i,j\}:(\pi_k,\pi_{k+1})=(i,j)\text{ or }(j,i)\}$. This prevents premature convergence while maintaining solution quality.
+
+The algorithm runs for $I=5000$ iterations. Time complexity is $O(I\,P\,(n^2+n))$ for operator application and pool updates. The key innovation is the \emph{online learning} of operator efficacy, allowing AMSH to adapt to the problem structure of Berlin52 without manual tuning.
 
 \section{Experiments}
-We evaluate all four methods on Berlin52.
+We evaluate all five methods on Berlin52.
 
 \textbf{Dataset.} TSPLIB Berlin52 with rounded Euclidean distances.
 
 \textbf{Metrics.} Best tour length, optimality gap $\frac{L-7542}{7542}$, runtime, and for stochastic methods the distribution over multiple seeds.
 
-\textbf{Protocol.} For GA and SA, run at least 10 seeds; for ILP, use a time limit $\tau$ (e.g., 15--20 minutes) and report incumbent and MIP gap; for NN+2-opt, report result from several start cities. We will include convergence plots and tour visualizations.
+\textbf{Protocol.} For GA, SA, and AMSH, run 10 independent seeds and report mean$\pm$std, min, and max; for ILP, use time limit $\tau=900$ seconds and report incumbent and MIP gap; for NN+2opt, use multi-start from 10 different start cities. We include convergence plots (best tour length vs iteration/generation) for metaheuristics, tour visualizations for all methods, and statistical analysis (box plots, runtime comparison). All experiments are run on a single machine with Python 3.8+ and Gurobi 11.0+.
 
-\textbf{Default parameters.} Example defaults: GA (population 100, generations 500, tournament $k=3$, $p_c=0.9$, $p_m=0.2$, elitism 2, memetic 2-opt on top 10% every 10 generations); SA ($T_0$ from median positive 2-opt $\Delta$, $\alpha=0.98$, 20$n$ moves per temperature, termination as above); NN+2-opt (first-improvement, capped passes); ILP (lazy SEC if available; otherwise MTZ; time limit $\tau$).
+\textbf{Implementation.} Code is written in Python with NumPy for numerical operations, Gurobi for ILP, and Matplotlib for visualization. The distance calculation strictly follows TSPLIB rounding: $\lfloor\sqrt{(x_i-x_j)^2+(y_i-y_j)^2}+0.5\rfloor$. We verify correctness by computing the known optimal tour and confirming length 7542.
+
+\textbf{Default parameters.} GA: population 100, generations 500, tournament $k=3$, $p_c=0.9$, $p_m=0.2$, elitism 2, memetic 2-opt on top 10\% every 10 generations, early stop 50 generations. SA: $T_0$ auto-computed, $\alpha=0.98$, $20n$ moves per temperature, $T_{\min}=10^{-3}$, stop after 10 non-improving levels. AMSH: pool size 10, iterations 5000, $\alpha=0.1$, $\epsilon=0.05$, intensification every 100 iterations, diversification every 500. NN+2opt: first-improvement, max passes 100. ILP: lazy SEC with warm start, time limit 900s.
 
 \section{Conclusion}
-We presented four Berlin52-executable methods spanning constructive heuristics, metaheuristics, and exact ILP with two execution modes, and we specified termination criteria and an evaluation protocol against the known optimum. Next, we will run the experiments, analyze quality--time trade-offs, and quantify the impact of local improvement and solver mode.
-
-\appendix
-\section{Held--Karp Dynamic Programming (Theoretical)}
-Fix city 1 as origin. For $S\subseteq \mathcal{V}\setminus\{1\}$ and $j\in S$, define
-\begin{equation}
- C(S,j)=\begin{cases}
- d_{1j}, & S=\{j\},\\
- \min\limits_{k\in S\setminus\{j\}} \big( C(S\setminus\{j\},k)+d_{kj}\big), & |S|\ge 2.
- \end{cases}
-\end{equation}
-The optimal tour cost is $\min_{j\ne 1}\big(C(\mathcal{V}\setminus\{1\},j)+d_{j1}\big)$ \cite{HeldKarp1962,Bellman1962}. The complexity is $O(n^2 2^n)$ time and $O(n2^n)$ space, which is infeasible for $n=52$; however, it is useful for validating small subsets.
+We presented five Berlin52-executable methods spanning constructive heuristics (NN+2opt), exact optimization (ILP with lazy SEC), population-based metaheuristics (GA), single-solution metaheuristics (SA), and a novel adaptive hybrid (AMSH) that learns operator efficacy online. Each method is rigorously defined with complexity analysis and termination criteria. The experimental protocol compares solution quality, optimality gap, convergence behavior, and runtime against the known optimum 7542. AMSH represents a contribution in adaptive metaheuristic design by unifying multiple neighborhood operators under a credit-assignment framework, enabling automatic adaptation to problem structure. The complete Python implementation with Gurobi integration provides reproducible results and serves as a practical toolkit for TSP benchmarking. Future work includes extending AMSH to larger TSPLIB instances, investigating alternative credit-assignment strategies (e.g., multi-armed bandits), and transfer learning of operator weights across problem families.
 
 \begin{thebibliography}{99}
 \bibitem{GareyJohnson1979} M. R. Garey and D. S. Johnson. Computers and Intractability: A Guide to the Theory of NP-Completeness. W. H. Freeman, 1979.
 \bibitem{Karp1972} R. M. Karp. Reducibility among combinatorial problems. In Complexity of Computer Computations, 1972.
 \bibitem{Reinelt1995} G. Reinelt. TSPLIB—A traveling salesman problem library. ORSA Journal on Computing, 3(4):376–384, 1991. (TSPLIB95 updated online collection).
 \bibitem{Applegate2006Concorde} D. L. Applegate, R. E. Bixby, V. Chvátal, and W. J. Cook. The Traveling Salesman Problem: A Computational Study. Princeton University Press, 2006. (See also the Concorde TSP Solver website.).
+\bibitem{Gurobi} Gurobi Optimization, LLC. Gurobi Optimizer Reference Manual, 2024. https://www.gurobi.com.
 \bibitem{HeldKarp1962} M. Held and R. M. Karp. A dynamic programming approach to sequencing problems. Journal of the Society for Industrial and Applied Mathematics, 10(1):196–210, 1962.
 \bibitem{Bellman1962} R. Bellman. Dynamic programming treatment of the traveling salesman problem. Journal of the ACM, 9(1):61–63, 1962.
 \bibitem{Flood1956} M. M. Flood. The traveling-salesman problem. Operations Research, 4(1):61–75, 1956.
@@ -122,6 +136,7 @@ The optimal tour cost is $\min_{j\ne 1}\big(C(\mathcal{V}\setminus\{1\},j)+d_{j1
 \bibitem{Michalewicz1996} Z. Michalewicz. Genetic Algorithms + Data Structures = Evolution Programs. Springer, 3rd ed., 1996.
 \bibitem{Kirkpatrick1983} S. Kirkpatrick, C. D. Gelatt, and M. P. Vecchi. Optimization by simulated annealing. Science, 220(4598):671–680, 1983.
 \bibitem{Cerny1985} V. Černý. Thermodynamical approach to the traveling salesman problem: An efficient simulation algorithm. Journal of Optimization Theory and Applications, 45(1):41–51, 1985.
+\bibitem{Ropke2006ALNS} S. Ropke and D. Pisinger. An adaptive large neighborhood search heuristic for the pickup and delivery problem with time windows. Transportation Science, 40(4):455–472, 2006.
 \end{thebibliography}
 
 \end{document}

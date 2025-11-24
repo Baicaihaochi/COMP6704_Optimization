@@ -1,9 +1,13 @@
 NAME: berlin52
-TYPE: TSP                  # 从 A 到 B 的距离 = 从 B 到 A 的距离（即d_ij=d_ji），且不允许重复访问。
+TYPE: TSP
+                  # 从 A 到 B 的距离 = 从 B 到 A 的距离（即d_ij=d_ji），且不允许重复访问。
 COMMENT: 52 locations in Berlin (Groetschel)
-DIMENSION: 52              # 城市数量 n=52, 由数学家 Martin Grötschel 提出的 52 个柏林位置（实际坐标不代表真实地理，仅为数学建模用）。
-EDGE_WEIGHT_TYPE: EUC_2D   # 边的权重（即城市间距离）按 二维欧氏距离（Euclidean distance） 计算，并四舍五入取整, 必须四舍五入。
-NODE_COORD_SECTION         # <城市编号> <x 坐标> <y 坐标>
+DIMENSION: 52
+              # 城市数量 n=52, 由数学家 Martin Grötschel 提出的 52 个柏林位置（实际坐标不代表真实地理，仅为数学建模用）。
+EDGE_WEIGHT_TYPE: EUC_2D
+   # 边的权重（即城市间距离）按 二维欧氏距离（Euclidean distance） 计算，并四舍五入取整, 必须四舍五入。
+NODE_COORD_SECTION
+         # <城市编号> <x 坐标> <y 坐标>
 1 565.0 575.0
 2 25.0 185.0
 3 345.0 750.0
