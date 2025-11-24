@@ -62,7 +62,10 @@ def test_instance(instance_name: str, data_path: str, optimum: int, n: int, outp
     # ========================================================================
     # Method 2: ILP (only for small instances)
     # ========================================================================
-    if GUROBI_AVAILABLE and n <= 100:
+    # Note: Gurobi free license limits variables to 2000
+    # TSP ILP has n² variables, so even n=45 (2025 vars) exceeds limit
+    # For size-limited license, skip ILP for all instances
+    if GUROBI_AVAILABLE and n <= 44:  # Only instances with n² < 2000
         print(f"\n[2/5] ILP with Lazy SEC (time limit: {300 if n < 70 else 900}s)...")
         try:
             time_limit = 300 if n < 70 else 900
@@ -74,7 +77,12 @@ def test_instance(instance_name: str, data_path: str, optimum: int, n: int, outp
         except Exception as e:
             print(f"  ✗ ILP failed: {e}")
     else:
-        reason = "Gurobi not available" if not GUROBI_AVAILABLE else f"n={n} too large"
+        if not GUROBI_AVAILABLE:
+            reason = "Gurobi not available"
+        elif n > 44:
+            reason = f"n={n}, n²={n*n} variables > 2000 (license limit)"
+        else:
+            reason = f"n={n} too large"
         print(f"\n[2/5] ILP skipped ({reason})")
 
     # ========================================================================

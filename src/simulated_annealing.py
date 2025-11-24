@@ -14,23 +14,23 @@ class SimulatedAnnealing:
     def __init__(self,
                  distance_matrix: np.ndarray,
                  initial_temp: float = None,
-                 cooling_rate: float = 0.995,
+                 cooling_rate: float = 0.99,
                  moves_per_temp: int = None,
                  min_temp: float = 1e-3,
-                 max_no_improve: int = 15):
+                 max_no_improve: int = 20):
         """
         Args:
             distance_matrix: n x n distance matrix (0-indexed)
             initial_temp: Initial temperature (auto-computed if None)
-            cooling_rate: Cooling rate alpha (T_new = alpha * T_old), default 0.995
-            moves_per_temp: Number of moves per temperature level (default: 50*n)
+            cooling_rate: Cooling rate alpha (T_new = alpha * T_old), default 0.99
+            moves_per_temp: Number of moves per temperature level (default: 100*n)
             min_temp: Minimum temperature threshold
             max_no_improve: Stop if no improvement for N temperature levels
         """
         self.dist = distance_matrix
         self.n = len(distance_matrix)
         self.cooling_rate = cooling_rate
-        self.moves_per_temp = moves_per_temp if moves_per_temp else 50 * self.n
+        self.moves_per_temp = moves_per_temp if moves_per_temp else 100 * self.n
         self.min_temp = min_temp
         self.max_no_improve = max_no_improve
         self.initial_temp = initial_temp
@@ -131,29 +131,21 @@ class SimulatedAnnealing:
             if delta < 0:  # Cost increase
                 positive_deltas.append(-delta)
 
-        if not positive_deltas or len(positive_deltas) < 10:
-            # If starting from good solution (like NN), use average absolute delta
-            if all_deltas:
-                avg_delta = np.mean(all_deltas)
-                # Set T0 high enough to accept 80% of average moves initially
-                # P = exp(-delta/T) = 0.8 => T = -delta / ln(0.8)
-                T0 = avg_delta / (-math.log(0.8))
-                return max(T0, 100.0)  # At least 100
-            return 100.0  # Fallback
+        if all_deltas:
+            avg_delta = np.mean(all_deltas)
+            # Set T0 very high to accept most moves initially (90% acceptance)
+            # P = exp(-delta/T) = 0.9 => T = -delta / ln(0.9)
+            T0 = avg_delta / (-math.log(0.9))
+            # Ensure at least 200 for good exploration
+            return max(T0, 200.0)
 
-        # Set T0 so that 70% of median positive delta is accepted initially
-        # P = exp(-delta/T) = 0.7 => T = -delta / ln(0.7)
-        median_delta = np.median(positive_deltas)
-        T0 = median_delta / (-math.log(0.7))
-
-        # Ensure reasonable range
-        return max(T0, 50.0)
+        return 200.0  # Fallback
 
     def anneal(self) -> dict:
         """Run simulated annealing."""
         start_time = time.time()
 
-        # Initialize tour
+        # Initialize tour - use NN for reasonable starting point
         current_tour = self.generate_initial_tour(method='nn')
         current_length = self.tour_length(current_tour)
 

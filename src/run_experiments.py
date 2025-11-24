@@ -135,17 +135,18 @@ def run_all_experiments(data_path: str = 'berlin52.tsp', output_dir: str = 'resu
     # Method 4: Simulated Annealing
     # ========================================================================
     print("\n[5/7] Running Method 4: Simulated Annealing...")
-    print("  - Cooling rate: 0.995 (slower cooling), Moves per temp: 50*n")
-    print("  - Auto temperature initialization (improved)")
+    print("  - Cooling rate: 0.99, Moves per temp: 100*n")
+    print("  - High initial temperature (T0≥200, 90% acceptance)")
+    print("  - NN initialization with extensive exploration")
     print("  - Running 10 independent runs...")
 
     sa_solver = SimulatedAnnealing(
         dist_matrix,
-        initial_temp=None,  # Auto-compute with improved method
-        cooling_rate=0.995,  # Slower cooling
-        moves_per_temp=50*tsp_data.dimension,  # More exploration per level
+        initial_temp=None,  # Auto-compute: T0≥200 for high acceptance
+        cooling_rate=0.99,  # Geometric cooling
+        moves_per_temp=100*tsp_data.dimension,  # Extensive exploration per level
         min_temp=1e-3,
-        max_no_improve=15  # More patience
+        max_no_improve=20  # Patience before termination
     )
 
     sa_results = sa_solver.solve(num_runs=10)
