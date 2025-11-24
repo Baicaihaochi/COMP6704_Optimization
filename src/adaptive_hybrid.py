@@ -26,10 +26,10 @@ class AdaptiveMultiStrategyHybrid:
     def __init__(self,
                  distance_matrix: np.ndarray,
                  pool_size: int = 10,
-                 iterations: int = 5000,
-                 intensification_freq: int = 100,
-                 diversification_freq: int = 500,
-                 learning_rate: float = 0.1,
+                 iterations: int = 4000,
+                 intensification_freq: int = 80,
+                 diversification_freq: int = 400,
+                 learning_rate: float = 0.15,
                  min_operator_prob: float = 0.05):
         """
         Args:
@@ -101,7 +101,7 @@ class AdaptiveMultiStrategyHybrid:
             # Nearest neighbor from different starts
             tour = self.nearest_neighbor(start)
             # Quick 2-opt
-            tour = self.apply_2opt(tour, max_iterations=10)
+            tour = self.apply_2opt(tour, max_iterations=12)
             length = self.tour_length(tour)
             pool.append((tour, length))
 
@@ -122,7 +122,7 @@ class AdaptiveMultiStrategyHybrid:
         while len(final_pool) < self.pool_size:
             tour = list(range(self.n))
             random.shuffle(tour)
-            tour = self.apply_2opt(tour, max_iterations=5)
+            tour = self.apply_2opt(tour, max_iterations=6)
             length = self.tour_length(tour)
             final_pool.append((tour, length))
 
@@ -143,7 +143,7 @@ class AdaptiveMultiStrategyHybrid:
 
         return tour
 
-    def apply_2opt(self, tour: List[int], max_iterations: int = 50) -> List[int]:
+    def apply_2opt(self, tour: List[int], max_iterations: int = 30) -> List[int]:
         """Apply 2-opt local search."""
         improved = True
         iterations = 0
@@ -315,7 +315,7 @@ class AdaptiveMultiStrategyHybrid:
             # Intensification phase
             if iteration % self.intensification_freq == 0:
                 best_in_pool = pool[0][0].copy()
-                improved_tour = self.apply_2opt(best_in_pool, max_iterations=100)
+                improved_tour = self.apply_2opt(best_in_pool, max_iterations=60)
                 improved_length = self.tour_length(improved_tour)
                 if improved_length < best_length:
                     best_tour = improved_tour
@@ -351,6 +351,10 @@ class AdaptiveMultiStrategyHybrid:
                 for name in self.operators:
                     prob = self.operators[name]['weight'] / total_weight
                     self.history['operator_probs'][name].append(prob)
+
+        # Final polishing to squeeze last improvements
+        best_tour = self.apply_2opt(best_tour, max_iterations=80)
+        best_length = self.tour_length(best_tour)
 
         total_time = time.time() - start_time
 

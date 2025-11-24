@@ -170,7 +170,7 @@ def run_all_experiments(data_path: str = 'berlin52.tsp', output_dir: str = 'resu
     # ========================================================================
     print("\n[6/7] Running Method 5: Adaptive Multi-Strategy Hybrid (AMSH)...")
     print("  - Novel adaptive operator selection method")
-    print("  - Pool size: 10, Iterations: 5000")
+    print("  - Pool size: 10, Iterations: 4000, faster intensification/diversification")
     print("  - Operators: 2-opt, 3-opt, Or-opt, Swap, Insert")
     print("  - Running 10 independent runs...")
 
@@ -182,10 +182,10 @@ def run_all_experiments(data_path: str = 'berlin52.tsp', output_dir: str = 'resu
         amsh_solver = AdaptiveMultiStrategyHybrid(
             dist_matrix,
             pool_size=10,
-            iterations=5000,
-            intensification_freq=100,
-            diversification_freq=500,
-            learning_rate=0.1,
+            iterations=4000,
+            intensification_freq=80,
+            diversification_freq=400,
+            learning_rate=0.15,
             min_operator_prob=0.05
         )
 

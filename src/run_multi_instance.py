@@ -137,7 +137,7 @@ def test_instance(instance_name: str, data_path: str, optimum: int, n: int, outp
     # ========================================================================
     print(f"\n[5/5] AMSH (3 runs)...")
     amsh_pool = min(10, max(5, n//10))
-    amsh_iters = min(5000, max(1000, 50*n))
+    amsh_iters = min(4000, max(1500, 20*n))
 
     amsh_all_results = []
     amsh_best_overall = None
@@ -148,8 +148,9 @@ def test_instance(instance_name: str, data_path: str, optimum: int, n: int, outp
             dist_matrix,
             pool_size=amsh_pool,
             iterations=amsh_iters,
-            intensification_freq=100,
-            diversification_freq=500
+            intensification_freq=max(60, n//2),
+            diversification_freq=max(300, n),
+            learning_rate=0.15
         )
 
         amsh_result = amsh_solver.solve()

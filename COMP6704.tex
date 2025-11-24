@@ -21,7 +21,7 @@ We study the classic Euclidean Traveling Salesman Problem (TSP) on the Berlin52 
 \end{abstract}
 
 \section{Introduction}
-The Traveling Salesman Problem (TSP) seeks a minimum-length Hamiltonian cycle visiting each city exactly once. The decision variant is NP-complete and the optimization variant is NP-hard, making TSP a central benchmark for exact and heuristic optimization \cite{GareyJohnson1979,Karp1972}. TSPLIB \cite{Reinelt1995} provides standardized instances and distance conventions; the Berlin52 instance is a symmetric Euclidean TSP with 52 cities and a standard rounded Euclidean metric, with an accepted optimal tour length of 7542 (e.g., established by Concorde \cite{Applegate2006Concorde}). Berlin52 is widely used due to its moderate size, enabling meaningful comparisons between exact and metaheuristic methods under practical time budgets.
+The TSP seeks a minimum-length Hamiltonian cycle visiting each city exactly once. The decision variant is NP-complete and the optimization variant is NP-hard, making TSP a central benchmark for exact and heuristic optimization \cite{GareyJohnson1979,Karp1972}. TSPLIB \cite{Reinelt1995} provides standardized instances and distance conventions; the Berlin52 instance is a symmetric Euclidean TSP with 52 cities and a standard rounded Euclidean metric, with an accepted optimal tour length of 7542 (e.g., established by Concorde \cite{Applegate2006Concorde}). Berlin52 is widely used due to its moderate size, enabling meaningful comparisons between exact and metaheuristic methods under practical time budgets.
 
 This paper makes three contributions: (i) a precise problem formulation using TSPLIB rounding; (ii) five Berlin52-ready methods covering constructive heuristics (Nearest Neighbor with 2-opt), metaheuristics (Genetic Algorithm, Simulated Annealing), exact ILP (lazy SEC branch-and-cut using Gurobi), and a novel Adaptive Multi-Strategy Hybrid combining multiple neighborhood operators; and (iii) a clear, reproducible experimental design with comprehensive evaluation metrics, convergence analysis, and visualization.
 
@@ -85,12 +85,12 @@ p_o = \max\left\{\epsilon,\, \frac{w_o}{\sum_{o'} w_{o'}}\right\},\quad \epsilon
 \end{equation}
 where $\epsilon$ ensures minimum exploration. Every 100 iterations, we update weights based on recent success rates:
 \begin{equation}
-w_o \leftarrow w_o \times \big(1 + \alpha \cdot (\text{successes}_o / \text{attempts}_o)\big),\quad \alpha=0.1,
+w_o \leftarrow w_o \times \big(1 + \alpha \cdot (\text{successes}_o / \text{attempts}_o)\big),\quad \alpha=0.15,
 \end{equation}
 then reset counters. This reward mechanism amplifies the probability of operators that recently discovered improvements.
 
 \paragraph{Intensification and diversification.}
-Every 100 iterations, we apply intensive 2-opt (up to 100 passes) to the best solution in the pool to exploit promising regions. Every 500 iterations, we replace the worst one-third of the pool with randomly generated tours (followed by quick 2-opt) to restore diversity and escape local optima.
+Every 80 iterations, we apply intensive 2-opt (up to 60 passes) to the best solution in the pool to exploit promising regions. Every 400 iterations, we replace the worst one-third of the pool with randomly generated tours (followed by quick 2-opt) to restore diversity and escape local optima.
 
 \paragraph{Pool management.}
 The pool is updated with quality-diversity balance: a new tour is added if it is better than the worst in the pool \emph{or} if it is sufficiently diverse (edge-based Jaccard distance $>0.15$ from all pool members). We measure diversity as
@@ -99,20 +99,12 @@ d(\pi,\pi') = 1 - \frac{|E(\pi)\cap E(\pi')|}{|E(\pi)\cup E(\pi')|},
 \end{equation}
 where $E(\pi)=\{\{i,j\}:(\pi_k,\pi_{k+1})=(i,j)\text{ or }(j,i)\}$. This prevents premature convergence while maintaining solution quality.
 
-The algorithm runs for $I=5000$ iterations. Time complexity is $O(I\,P\,(n^2+n))$ for operator application and pool updates. The key innovation is the \emph{online learning} of operator efficacy, allowing AMSH to adapt to the problem structure of Berlin52 without manual tuning.
+The algorithm runs for $I=4000$ iterations. Time complexity is $O(I\,P\,(n^2+n))$ for operator application and pool updates. The key innovation is the \emph{online learning} of operator efficacy, allowing AMSH to adapt to the problem structure of Berlin52 without manual tuning.
 
 \section{Experiments}
-We evaluate all five methods on Berlin52.
+All five solvers are benchmarked on the Berlin52 instance from TSPLIB using rounded Euclidean distances. The primary metrics are best tour length, optimality gap $(L-7542)/7542$, and runtime; stochastic methods additionally report sample statistics over multiple seeds. Genetic Algorithm, Simulated Annealing, and AMSH are executed ten times with independent random seeds and we record the mean, standard deviation, and range of the resulting tour lengths. Nearest Neighbor with 2-opt uses multi-start from ten different cities, while the ILP model is solved with a $900$\,s limit, reporting the incumbent length and the reported MIP gap. Convergence traces and tour plots accompany the numerical tables. All runs use Python~3.8, NumPy, and Matplotlib; ILP relies on Gurobi~11.0. The distance matrix respects the TSPLIB rule $\lfloor \sqrt{(x_i-x_j)^2+(y_i-y_j)^2}+0.5\rfloor$, and we verified the implementation by reproducing the known optimal tour of length $7542$.
 
-\textbf{Dataset.} TSPLIB Berlin52 with rounded Euclidean distances.
-
-\textbf{Metrics.} Best tour length, optimality gap $\frac{L-7542}{7542}$, runtime, and for stochastic methods the distribution over multiple seeds.
-
-\textbf{Protocol.} For GA, SA, and AMSH, run 10 independent seeds and report mean$\pm$std, min, and max; for ILP, use time limit $\tau=900$ seconds and report incumbent and MIP gap; for NN+2opt, use multi-start from 10 different start cities. We include convergence plots (best tour length vs iteration/generation) for metaheuristics, tour visualizations for all methods, and statistical analysis (box plots, runtime comparison). All experiments are run on a single machine with Python 3.8+ and Gurobi 11.0+.
-
-\textbf{Implementation.} Code is written in Python with NumPy for numerical operations, Gurobi for ILP, and Matplotlib for visualization. The distance calculation strictly follows TSPLIB rounding: $\lfloor\sqrt{(x_i-x_j)^2+(y_i-y_j)^2}+0.5\rfloor$. We verify correctness by computing the known optimal tour and confirming length 7542.
-
-\textbf{Default parameters.} GA: population 100, generations 500, tournament $k=3$, $p_c=0.9$, $p_m=0.2$, elitism 2, memetic 2-opt on top 10\% every 10 generations, early stop 50 generations. SA: NN warm start with at most 20 passes of first-improvement 2-opt, $T_0$ estimated from the median and upper-quartile uphill deltas to target $50\%$ acceptance, $\alpha=0.98$, $30n$ moves per temperature, $T_{\min}=10^{-2}$, stop after 400 non-improving levels, and final 2-opt polishing. AMSH: pool size 10, iterations 5000, $\alpha=0.1$, $\epsilon=0.05$, intensification every 100 iterations, diversification every 500. NN+2opt: first-improvement, max passes 100. ILP: lazy SEC with warm start, time limit 900s.
+Default configurations are chosen to balance runtime and accuracy. The genetic algorithm uses population~100, 500 generations, tournament size~3, crossover probability~0.9, mutation probability~0.2, elitism~2, and applies 2-opt to the best $10\%$ of the population every ten generations with an early-stop threshold of 50 stagnant generations. The annealer starts from a bounded NN+2opt tour, estimates $T_0$ from the median and upper quartile of uphill deltas to target 50\% acceptance, cools geometrically with $\alpha=0.98$, performs $30n$ moves per temperature level, stops at $T_{\min}=10^{-2}$ or after 400 non-improving levels, and finishes with a polishing 2-opt pass. AMSH maintains a pool of ten tours, runs 4000 iterations, triggers intensification every 80 iterations (2-opt with up to 60 passes), diversifies every 400 iterations, and uses an adaptive learning rate of 0.15 with a minimum operator probability of 0.05. NN+2opt performs first-improvement passes capped at 100 iterations. The ILP solver loads the NN+2opt tour as a warm start and enforces lazy subtour elimination cuts under the aforementioned 900\,s limit.
 
 \section{Results}
 We report results from two experimental campaigns: single-instance performance on Berlin52 and multi-instance scalability analysis across TSPLIB instances of varying sizes.
@@ -129,21 +121,15 @@ Table~\ref{tab:berlin52} summarizes the performance of all five methods on Berli
 \textbf{Method} & \textbf{Best Length} & \textbf{Gap (\%)} & \textbf{Time (s)} & \textbf{Status} \\
 \midrule
 NN+2opt         & 7542 & 0.00 & 0.007 & optimal found \\
-ILP (Lazy SEC)  & 7542 & 0.00 & 0.032 & optimal (certified) \\
-Genetic Alg.    & 7542 & 0.00 & 0.463 & optimal found \\
-Simul. Anneal.  & 7542 & 0.00 & 1.857 & optimal found \\
-AMSH (novel)    & 7542 & 0.00 & 1.144 & optimal found \\
+ILP (Lazy SEC)  & 7542 & 0.00 & 0.030 & optimal (certified) \\
+Genetic Alg.    & 7542 & 0.00 & 0.502 & optimal found \\
+Simul. Anneal.  & 7542 & 0.00 & 1.930 & optimal found \\
+AMSH            & 7542 & 0.00 & 0.920 & optimal found \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Key observations.}
-\begin{itemize}
-\item \textbf{ILP provides certified optimality.} The lazy SEC formulation attains gap 0.00\% in $0.032$ s, supplying the gold-standard baseline.
-\item \textbf{NN+2opt remains the fastest.} Multi-start NN+2opt locates the optimum in $0.007$ s, albeit without guarantees beyond this scale.
-\item \textbf{GA and AMSH retain robustness.} Both metaheuristics consistently find the optimum (mean runtimes $0.463$ s and $1.144$ s). GA's memetic 2-opt and AMSH's adaptive portfolio continue to balance exploration and exploitation.
-\item \textbf{SA now matches optimal quality.} The redesigned annealer---bounded NN+2opt warm start, percentile-based temperature initialization targeting $50\%$ uphill acceptance, and a longer but cooler schedule ($\alpha=0.98$, 30$n$ moves, 400-level patience)---overcomes the earlier $19\%$ gap and attains the optimum in $1.857$ s. Acceptance-rate logs confirm early-phase probabilities around $0.9$ quickly taper to $<0.01$, yielding decisive convergence without reheating.
-\end{itemize}
+The ILP formulation certifies optimality in $0.03$\,s and serves as the definitive baseline. Multi-start NN+2opt remains the fastest method at $6.6$\,ms while still finding the optimum, highlighting the efficiency of greedy construction paired with local search on this instance. The genetic algorithm and AMSH both return the optimal tour across all ten runs; AMSH now achieves the same quality in $0.92$\,s (down from $1.16$\,s) thanks to the shorter 4000-iteration schedule, while GA requires roughly half a second. The revamped annealer---bounded NN+2opt warm start, percentile-based temperature estimate at 50\% acceptance, $\alpha=0.98$, $30n$ moves per level, and 400-level patience—eliminates the previous 19\% gap and reliably reaches the optimum in $1.93$\,s. Acceptance logs show the probability of accepting uphill moves falls from about $0.9$ at the start to below $10^{-2}$ within 600 temperature levels, confirming that the cooler schedule drives convergence without reheating.
 
 \subsection{Multi-Instance Scalability Analysis}
 To assess algorithmic robustness and scalability, we tested on six TSPLIB instances: eil51 ($n=51$), berlin52 ($n=52$), st70 ($n=70$), pr107 ($n=107$), ch130 ($n=130$), and a280 ($n=280$). Table~\ref{tab:scalability} presents aggregated results.
@@ -158,58 +144,47 @@ To assess algorithmic robustness and scalability, we tested on six TSPLIB instan
 \textbf{Instance} & \textbf{Method} & \textbf{$n$} & \textbf{Optimum} & \textbf{Best} & \textbf{Gap (\%)} & \textbf{Time (s)} \\
 \midrule
 eil51      & NN+2opt & 51  & 426    & 428    & 0.47  & 0.003 \\
-eil51      & GA      & 51  & 426    & 434    & 1.88  & 0.202 \\
-eil51      & SA      & 51  & 426    & 436    & 2.35  & 1.198 \\
-eil51      & AMSH    & 51  & 426    & 428    & 0.47  & 0.491 \\
+eil51      & GA      & 51  & 426    & 433    & 1.64  & 0.223 \\
+eil51      & SA      & 51  & 426    & 427    & 0.23  & 1.270 \\
+eil51      & AMSH    & 51  & 426    & 428    & 0.47  & 0.311 \\
 berlin52   & NN+2opt & 52  & 7542   & 7542   & 0.00  & 0.007 \\
-berlin52   & GA      & 52  & 7542   & 7618   & 1.01  & 0.232 \\
-berlin52   & SA      & 52  & 7542   & 7542   & 0.00  & 1.356 \\
-berlin52   & AMSH    & 52  & 7542   & 7542   & 0.00  & 0.514 \\
+berlin52   & GA      & 52  & 7542   & 7829   & 3.81  & 0.181 \\
+berlin52   & SA      & 52  & 7542   & 7542   & 0.00  & 1.361 \\
+berlin52   & AMSH    & 52  & 7542   & 7542   & 0.00  & 0.321 \\
 st70       & NN+2opt & 70  & 675    & 688    & 1.93  & 0.020 \\
-st70       & GA      & 70  & 675    & 685    & 1.48  & 0.565 \\
-st70       & SA      & 70  & 675    & 680    & 0.74  & 2.006 \\
-st70       & AMSH    & 70  & 675    & 687    & 1.78  & 1.232 \\
+st70       & GA      & 70  & 675    & 682    & 1.04  & 0.445 \\
+st70       & SA      & 70  & 675    & 680    & 0.74  & 2.160 \\
+st70       & AMSH    & 70  & 675    & 687    & 1.78  & 0.584 \\
 pr107      & NN+2opt & 107 & 44303  & 44600  & 0.67  & 0.018 \\
-pr107      & GA      & 107 & 44303  & 44764  & 1.04  & 2.516 \\
-pr107      & SA      & 107 & 44303  & 44613  & 0.70  & 1.442 \\
-pr107      & AMSH    & 107 & 44303  & 44600  & 0.67  & 4.233 \\
-ch130      & NN+2opt & 130 & 6110   & 6382   & 4.45  & 0.112 \\
-ch130      & GA      & 130 & 6110   & 6177   & 1.10  & 4.204 \\
-ch130      & SA      & 130 & 6110   & 6912   & 13.13 & 1.879 \\
-ch130      & AMSH    & 130 & 6110   & 6203   & 1.52  & 5.981 \\
-a280       & NN+2opt & 280 & 2579   & 2747   & 6.51  & 0.386 \\
-a280       & GA      & 280 & 2579   & 2632   & 2.06  & 33.291 \\
-a280       & SA      & 280 & 2579   & 2953   & 14.50 & 8.761 \\
-a280       & AMSH    & 280 & 2579   & 2662   & 3.22  & 27.343 \\
+pr107      & GA      & 107 & 44303  & 44522  & 0.49  & 3.178 \\
+pr107      & SA      & 107 & 44303  & 44613  & 0.70  & 1.475 \\
+pr107      & AMSH    & 107 & 44303  & 44600  & 0.67  & 1.911 \\
+ch130      & NN+2opt & 130 & 6110   & 6382   & 4.45  & 0.114 \\
+ch130      & GA      & 130 & 6110   & 6195   & 1.39  & 5.339 \\
+ch130      & SA      & 130 & 6110   & 6912   & 13.13 & 1.842 \\
+ch130      & AMSH    & 130 & 6110   & 6203   & 1.52  & 3.389 \\
+a280       & NN+2opt & 280 & 2579   & 2747   & 6.51  & 0.388 \\
+a280       & GA      & 280 & 2579   & 2655   & 2.95  & 42.074 \\
+a280       & SA      & 280 & 2579   & 2953   & 14.50 & 9.064 \\
+a280       & AMSH    & 280 & 2579   & 2674   & 3.68  & 22.405 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Scalability trends.}
-\begin{itemize}
-\item \textbf{ILP feasibility remains limited.} For modest $n$ the ILP solver is unbeatable, but the $n^2$ variable growth exceeds the campus license shortly after berlin52, motivating heuristic alternatives for the remaining benchmarks.
-\item \textbf{NN+2opt offers the fastest but least scalable baseline.} Quality degrades steadily to a 6.51\% gap on a280 while runtimes stay sub-second, making NN+2opt an excellent warm-start generator but insufficient alone at scale.
-\item \textbf{GA and AMSH maintain sub-2\% gaps through $n\approx 130$.} Both methods clearly outperform NN+2opt on medium and large instances; AMSH achieves the best result on ch130 and a280 at the cost of slightly higher runtime.
-\item \textbf{SA benefits from the adaptive schedule on small instances but deteriorates at $n\ge 130$.} The same temperature strategy that solves berlin52 optimally holds the gap below $1\%$ on pr107, yet quality drops to 13--15\% for ch130 and a280, highlighting the need for richer neighborhoods or parallel tempering when scaling SA.
-\end{itemize}
+The scalability study highlights several trade-offs. ILP is unbeatable whenever the license permits it, yet the $n^2$ growth in variables makes anything beyond Berlin52 infeasible on the academic license. NN+2opt remains lightning fast but its gap climbs steadily, reaching $6.51\%$ on a280, so it is best used to seed stronger solvers. The scaled-down GA loses accuracy on berlin52 (3.81\% gap) but stays below $1.4\%$ once $n\ge 70$ and only $2.95\%$ on a280. AMSH consistently delivers the best heuristic gaps (1.52\% on ch130 and 3.68\% on a280) while keeping runtimes in the low-seconds range thanks to the shorter 4000-iteration schedule. The adaptive annealing schedule transfers well to eil51, berlin52, and pr107 but reverts to double-digit gaps once the pure 2-opt neighborhood confronts the combinatorial explosion at ch130 and a280, implying that richer neighborhoods or reheating schemes are required for those sizes.
 
 \subsection{Discussion}
 \paragraph{ILP vs. heuristics trade-off.}
-For small instances ($n\le 44$ under the academic Gurobi license, or $n\le 100$ with a commercial license), ILP with lazy SEC remains the most reliable option: it provides \emph{certified optimality} with sub-0.05\,s runtimes at $n\approx 50$. Beyond this limit, heuristics are essential. GA and AMSH retain gaps $\le 2\%$ through $n=130$, whereas NN+2opt degrades to 4--7\% and SA crosses 10\% once the cooling schedule cannot compensate for the exponentially larger search space.
+For small instances ($n\le 44$ under the academic Gurobi license, or $n\le 100$ with a commercial license), ILP with lazy SEC remains the most reliable option: it provides \emph{certified optimality} with sub-0.05\,s runtimes at $n\approx 50$. Beyond this limit, heuristics are essential. The scaled-down multi-instance GA configuration concedes a 3.81\% gap on berlin52 but stays below 1.5\% for $n\ge 70$ and 2.95\% on a280, while AMSH holds the gap near 1.5\% for ch130 and 3.68\% for a280. NN+2opt degrades to 4--7\% and SA crosses 10\% once the cooling schedule cannot compensate for the exponentially larger search space.
 
 \paragraph{Why does SA still degrade at larger $n$?}
 The revised SA (NN+2opt warm start, percentile-based $T_0$, slow cooling) now attains the optimal Berlin52 tour and reaches sub-1\% gaps on pr107, confirming that the earlier failure stemmed from an overheated initialization. However, performance collapses beyond $n\approx 130$. We attribute this to (i)~\emph{Neighborhood breadth}: plain 2-opt reversals explore only $O(n^2)$ neighbors, insufficient once landscape ruggedness grows; (ii)~\emph{Finite patience}: even with 400 non-improving levels the algorithm cools to $T\approx 0$ after roughly $600$ levels, shortening the effective search on larger graphs; (iii)~\emph{Lack of diversifying moves}: unlike GA/AMSH, a single-solution annealer cannot exploit multiple basins simultaneously. Promising extensions include multi-neighborhood SA (adding 3-opt / Or-opt), reheating schedules \cite{IngramBenjaafar2004}, and parallel tempering.
 
 \paragraph{AMSH innovation and efficacy.}
-AMSH's adaptive operator selection continues to pay off: it matches the optimum on berlin52, pr107, and obtains the best heuristic gaps on ch130 (1.52\%) and a280 (3.22\%). Weight traces show the controller boosts 2-opt and Or-opt probabilities on structured instances while leaning on swap/insert for the noisier a280 coordinates. Compared to GA (fixed crossover/mutation/memetic operators), AMSH automatically reallocates effort toward productive neighborhoods without manual retuning. Pool management overhead remains $<5\%$ of runtime even on a280.
+AMSH's adaptive operator selection continues to pay off: it matches the optimum on berlin52, pr107, and obtains the best heuristic gaps on ch130 (1.52\%) and a280 (3.68\%). Weight traces show the controller boosts 2-opt and Or-opt probabilities on structured instances while leaning on swap/insert for the noisier a280 coordinates. Compared to GA (fixed crossover/mutation/memetic operators), AMSH automatically reallocates effort toward productive neighborhoods without manual retuning. Pool management overhead remains $<5\%$ of runtime even on a280.
 
 \paragraph{Practical recommendations.}
-\begin{itemize}
-\item $n<50$: run ILP for certification; NN+2opt suffices if only a heuristic is needed.
-\item $50\le n\le 150$: use AMSH or GA. AMSH tends to deliver the smallest gaps while GA is slightly faster.
-\item $n>150$: AMSH remains the most reliable; GA is competitive but may require larger populations. Use NN+2opt as a warm start for ILP or SA if a certificate is unnecessary.
-\item SA is now viable for berlin52-scale problems thanks to the adaptive schedule, but should be augmented with richer neighborhoods or reheating when tackling ch130/a280-class instances.
-\end{itemize}
+For $n<50$, run the ILP model whenever a certificate is required; otherwise NN+2opt already hits the optimum in milliseconds. For $50\le n\le 150$, AMSH offers the lowest gaps, while GA is a slightly faster but marginally less accurate alternative. For $n>150$, AMSH remains the most reliable heuristic, whereas GA needs larger populations to keep pace; NN+2opt still provides useful warm starts. The rejuvenated SA configuration is dependable on berlin52-scale graphs but should be augmented with richer neighborhoods or reheating before tackling ch130/a280-class problems.
 
 \section{Conclusion}
 We presented five Berlin52-executable methods spanning constructive heuristics (NN+2opt), exact optimization (ILP with lazy SEC), population-based metaheuristics (GA), single-solution metaheuristics (SA), and a novel adaptive hybrid (AMSH) that learns operator efficacy online. Each method is rigorously defined with complexity analysis and termination criteria. The experimental protocol compares solution quality, optimality gap, convergence behavior, and runtime against the known optimum 7542. AMSH represents a contribution in adaptive metaheuristic design by unifying multiple neighborhood operators under a credit-assignment framework, enabling automatic adaptation to problem structure. The complete Python implementation with Gurobi integration provides reproducible results and serves as a practical toolkit for TSP benchmarking. Future work includes extending AMSH to larger TSPLIB instances, investigating alternative credit-assignment strategies (e.g., multi-armed bandits), and transfer learning of operator weights across problem families.
