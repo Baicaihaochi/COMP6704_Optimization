@@ -112,15 +112,17 @@ def test_instance(instance_name: str, data_path: str, optimum: int, n: int, outp
     # Method 4: Simulated Annealing (scale parameters with n)
     # ========================================================================
     print(f"\n[4/5] Simulated Annealing (3 runs)...")
-    sa_moves = min(50*n, 5000)  # Cap at 5000 for large instances
+    sa_moves = min(30*n, 6000)  # Cap iterations to keep runtime manageable
+    sa_cooling = 0.98 if n <= 120 else 0.993
+    sa_patience = max(200, int(1.5 * n))
 
     sa_solver = SimulatedAnnealing(
         dist_matrix,
         initial_temp=None,
-        cooling_rate=0.995,
+        cooling_rate=sa_cooling,
         moves_per_temp=sa_moves,
-        min_temp=1e-3,
-        max_no_improve=15
+        min_temp=1e-2,
+        max_no_improve=sa_patience
     )
 
     sa_results = sa_solver.solve(num_runs=3)

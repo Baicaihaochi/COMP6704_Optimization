@@ -17,7 +17,8 @@ class SimulatedAnnealing:
                  cooling_rate: float = 0.99,
                  moves_per_temp: int = None,
                  min_temp: float = 1e-3,
-                 max_no_improve: int = 20):
+                 max_no_improve: int = 20,
+                 initial_acceptance: float = 0.5):
         """
         Args:
             distance_matrix: n x n distance matrix (0-indexed)
@@ -26,6 +27,8 @@ class SimulatedAnnealing:
             moves_per_temp: Number of moves per temperature level (default: 100*n)
             min_temp: Minimum temperature threshold
             max_no_improve: Stop if no improvement for N temperature levels
+            initial_acceptance: Target probability of accepting uphill moves when
+                estimating the starting temperature
         """
         self.dist = distance_matrix
         self.n = len(distance_matrix)
@@ -34,6 +37,7 @@ class SimulatedAnnealing:
         self.min_temp = min_temp
         self.max_no_improve = max_no_improve
         self.initial_temp = initial_temp
+        self.initial_acceptance = max(0.05, min(0.95, initial_acceptance))
 
         # Statistics tracking
         self.history = {
@@ -111,6 +115,45 @@ class SimulatedAnnealing:
 
         return new_tour, delta
 
+    def _two_opt_delta(self, tour: List[int], i: int, j: int) -> int:
+        """Compute 2-opt delta for fixed breakpoints."""
+        n = len(tour)
+        i_next = (i + 1) % n
+        j_next = (j + 1) % n
+        old_cost = self.dist[tour[i]][tour[i_next]] + self.dist[tour[j]][tour[j_next]]
+        new_cost = self.dist[tour[i]][tour[j]] + self.dist[tour[i_next]][tour[j_next]]
+        return old_cost - new_cost
+
+    def _local_two_opt_improvement(self, tour: List[int], max_passes: int = None) -> Tuple[List[int], int]:
+        """Apply first-improvement 2-opt passes to get a stronger starting point."""
+        current_tour = tour
+        current_length = self.tour_length(current_tour)
+        if max_passes is None:
+            max_passes = max(5, min(20, self.n // 2))
+        passes = 0
+        improved = True
+
+        while improved and passes < max_passes:
+            improved = False
+            passes += 1
+
+            for i in range(self.n - 1):
+                for j in range(i + 2, self.n):
+                    if i == 0 and j == self.n - 1:
+                        continue
+
+                    delta = self._two_opt_delta(current_tour, i, j)
+                    if delta > 0:
+                        current_tour = current_tour[:i+1] + current_tour[i+1:j+1][::-1] + current_tour[j+1:]
+                        current_length -= delta
+                        improved = True
+                        break
+
+                if improved:
+                    break
+
+        return current_tour, current_length
+
     def compute_initial_temperature(self, initial_tour: List[int], samples: int = 500) -> float:
         """Compute initial temperature from sample of positive cost increases.
 
@@ -127,27 +170,38 @@ class SimulatedAnnealing:
         # Sample more moves to get better statistics
         for _ in range(samples):
             _, delta = self.two_opt_neighbor(initial_tour)
-            all_deltas.append(abs(delta))
+            abs_delta = abs(delta)
+            if abs_delta == 0:
+                continue
+            all_deltas.append(abs_delta)
             if delta < 0:  # Cost increase
                 positive_deltas.append(-delta)
 
-        if all_deltas:
-            avg_delta = np.mean(all_deltas)
-            # Set T0 very high to accept most moves initially (90% acceptance)
-            # P = exp(-delta/T) = 0.9 => T = -delta / ln(0.9)
-            T0 = avg_delta / (-math.log(0.9))
-            # Ensure at least 200 for good exploration
-            return max(T0, 200.0)
+        if positive_deltas:
+            uphill = np.array(positive_deltas, dtype=float)
+            median_uphill = float(np.median(uphill))
+            upper_uphill = float(np.percentile(uphill, 75))
+            delta_ref = 0.5 * (median_uphill + upper_uphill)
+        elif all_deltas:
+            delta_ref = float(np.median(all_deltas))
+        else:
+            return 200.0  # Fallback for degenerate cases
 
-        return 200.0  # Fallback
+        # P(accept) = exp(-delta/T) => T = -delta / ln(P)
+        T0 = delta_ref / max(1e-8, -math.log(self.initial_acceptance))
+
+        # Clamp to avoid extremely hot or cold starts
+        min_T0 = max(50.0, 0.5 * delta_ref)
+        max_T0 = max(min_T0, 5.0 * delta_ref)
+        return max(min_T0, min(max_T0, T0))
 
     def anneal(self) -> dict:
         """Run simulated annealing."""
         start_time = time.time()
 
-        # Initialize tour - use NN for reasonable starting point
+        # Initialize tour - use NN + bounded 2-opt passes for a solid baseline
         current_tour = self.generate_initial_tour(method='nn')
-        current_length = self.tour_length(current_tour)
+        current_tour, current_length = self._local_two_opt_improvement(current_tour)
 
         best_tour = current_tour.copy()
         best_length = current_length
@@ -209,6 +263,10 @@ class SimulatedAnnealing:
 
             # Cool down
             T *= self.cooling_rate
+
+        # Final local refinement to make sure we return a 2-opt local optimum
+        refinement_passes = max(2, min(10, self.n // 5))
+        best_tour, best_length = self._local_two_opt_improvement(best_tour, max_passes=refinement_passes)
 
         total_time = time.time() - start_time
 
